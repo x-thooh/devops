@@ -1,0 +1,10 @@
+# 运行时数据（plan §4 / DEC-10）
+**/data/
+!**/data/.gitkeep
+
+# 密钥与本地覆盖（plan §4）
+env/.env
+
+# 编辑器 / 系统噪音
+.idea/
+.DS_Store
