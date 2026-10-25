@@ -5,6 +5,14 @@ set -euo pipefail
 
 DEVOPS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# 仓库内 venv 优先：让不走 make 的直接调用（./scripts/xxx.sh）也命中同一个解释器，
+# 不依赖宿主 PATH 顺序（mise.toml 定版本 + make setup 装依赖，DEC-51）。
+# 实测过的坑：交互式 zsh 与 `bash -lc` / cron / IDE Run Config 解析到的 python3 不是同一个。
+if [[ -x "${DEVOPS_ROOT}/.venv/bin/python3" ]]; then
+    PATH="${DEVOPS_ROOT}/.venv/bin:${PATH}"
+    export PATH
+fi
+
 ini() { python3 "${DEVOPS_ROOT}/scripts/ini.py" "$@"; }
 
 ip_of() { ini ip "$1"; }

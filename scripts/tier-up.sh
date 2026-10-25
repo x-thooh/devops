@@ -7,6 +7,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${ROOT}"
 
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib.sh"      # 取 .venv 优先的 PATH（DEC-51）
+
 tier="${1:-a}"
 case "${tier}" in
     a)

@@ -1,6 +1,14 @@
 # devops 本地栈：输入只有 stock/network.ini + base/ + services/*/compose.yml
 SHELL := /bin/bash
 
+# 解释器与依赖一律来自仓库内 .venv（`make setup` 建，版本由 mise.toml 定，DEC-51）：
+# 把它的 bin 前置到 PATH，所有目标里的 `python3` 就固定命中它，不再依赖宿主 PATH 顺序。
+# 目录不存在时这一行无害（PATH 会跳过不存在项），仍退回宿主 python3。
+export PATH := $(CURDIR)/.venv/bin:$(PATH)
+
+# 依赖镜像：pypi 直连不通的机器改成 https://pypi.tuna.tsinghua.edu.cn/simple
+PIP_INDEX_URL ?= https://pypi.org/simple
+
 S ?=
 # MODE 留空 = 不写死 solo：由 scripts/stack.sh 读 .mode-<profile> marker 沿用当前部署形态，
 # 从没部署过的栈才回退 solo（DEC-50）
@@ -8,11 +16,12 @@ MODE ?=
 TIER ?= a
 N ?=
 
-.PHONY: help render doctor up down ps tier-s tier-a tier-b tier-c tier-d tier-e tier-f \
+.PHONY: help setup render doctor up down ps tier-s tier-a tier-b tier-c tier-d tier-e tier-f \
 	stack-up stack-down stack-status stack-reset stack-shell stack-logs \
 	ui-open failover-drill trace-demo secrets secrets-show prepull backup-all
 
 help:
+	@echo "make setup                       建 .venv（mise 定 python 3.12）并装 PyYAML"
 	@echo "make render                      ini + base + 骨架 -> compose.generated.yml"
 	@echo "make doctor                      15 项体检（按已启用栈；第 15 项看运行态）"
 	@echo "make up [TIER=a]                 起档位（默认 A；未实现栈自动跳过）"
@@ -30,6 +39,15 @@ help:
 
 render:
 	@scripts/render-all.sh
+
+# 工具链固定：mise.toml 定解释器版本，依赖只进仓库内 .venv（不污染宿主解释器）。
+setup:
+	@command -v mise >/dev/null 2>&1 || { echo "ERROR: 需要 mise（brew install mise），或手动建 .venv 后装 pyyaml" >&2; exit 2; }
+	@mise trust >/dev/null 2>&1 || true
+	@mise install
+	@test -x .venv/bin/python3 || mise exec -- python -m venv .venv
+	@.venv/bin/python -m pip install --index-url "$(PIP_INDEX_URL)" pyyaml
+	@.venv/bin/python -c 'import sys, yaml; print("setup ok:", sys.version.split()[0], "| pyyaml", yaml.__version__)'
 
 env/.env:
 	@bash scripts/gen-secrets.sh

@@ -1,0 +1,11 @@
+# 仓库工具链固定（入库的"输入"，与 stock/network.ini 同级别）：
+# 换机器只需 `make setup`，它按这里声明的版本装解释器，再把依赖装进仓库内 .venv。
+#
+# 为什么不是"升级系统 Python"：/usr/bin/python3 由 Apple 随 Command Line Tools 分发
+# （root:wheel、SIP 保护），升不动也不该动；而宿主 PATH 里同时存在 uv / mise / /usr/bin
+# 三个 python3 时，交互式 zsh 与 `bash -lc` / cron / IDE Run Config 会解析到不同的解释器
+# —— 实测过一次 make render 报 ModuleNotFoundError: yaml 就是这么来的（DEC-51）。
+#
+# 版本粒度与镜像不同（DEC-40 只管容器镜像）：这里钉 minor（3.12），补丁号跟随 mise。
+[tools]
+python = "3.12"

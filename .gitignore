@@ -5,11 +5,15 @@
 # 密钥与本地覆盖（plan §4）
 env/.env
 
-# 生成物（只改输入：ini / base/ / services/*/compose.yml）
+# 生成物（只改输入：ini / base/ / mise.toml / services/*/compose.yml）
 /.generated/
 /compose.generated.yml
 /compose.yml
 /backups/
+
+# 本地工具链环境（mise.toml 是输入；.venv 与 mise 信任记录是生成物，DEC-51）
+/.venv/
+/.mise/
 
 # 编辑器 / 系统噪音
 .idea/
