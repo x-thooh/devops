@@ -10,7 +10,7 @@ services:
     user: "0:0"
     entrypoint: ["/bin/sh", "/data/active/patroni-1/entry.sh"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432"]
 
@@ -24,7 +24,7 @@ services:
     user: "0:0"
     entrypoint: ["/bin/sh", "/data/active/patroni-2/entry.sh"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432"]
 
@@ -38,7 +38,7 @@ services:
     user: "0:0"
     entrypoint: ["/bin/sh", "/data/active/patroni-3/entry.sh"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432"]
 
@@ -48,7 +48,7 @@ services:
     container_name: pg-dcs-1
     command: ["etcd", "--config-file=/data/active/pg-dcs-1/etcd.yml"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD", "etcdctl", "endpoint", "health"]
 
@@ -58,7 +58,7 @@ services:
     container_name: pg-dcs-2
     command: ["etcd", "--config-file=/data/active/pg-dcs-2/etcd.yml"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD", "etcdctl", "endpoint", "health"]
 
@@ -68,7 +68,7 @@ services:
     container_name: pg-dcs-3
     command: ["etcd", "--config-file=/data/active/pg-dcs-3/etcd.yml"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD", "etcdctl", "endpoint", "health"]
 
@@ -78,7 +78,7 @@ services:
     container_name: pg-haproxy-1
     command: ["-f", "/data/active/pg-haproxy-1/haproxy.cfg"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:7000/ >/dev/null"]
 
@@ -88,7 +88,7 @@ services:
     container_name: pg-haproxy-2
     command: ["-f", "/data/active/pg-haproxy-2/haproxy.cfg"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:7000/ >/dev/null"]
 
@@ -96,4 +96,4 @@ services:
     x-image: postgres_exporter
     profiles: ["pg"]
     container_name: pg-exporter
-    env_file: ["./data/active/pg-exporter.env"]
+    env_file: ["./.data/active/pg-exporter.env"]

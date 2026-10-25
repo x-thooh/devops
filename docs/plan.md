@@ -25,7 +25,7 @@
 | 需求 | 设计落点 | 章节 |
 |---|---|---|
 | ① 所有容器同一网络，各自分配 IP | 单一 `devnet` = `172.28.0.0/16`，每服务显式 `ipv4_address`，IP 唯一权威登记在 `stock/network.ini`，`doctor.sh` 双向校验 | §3 §6 |
-| ② 配置、运行时数据放 devops | `services/<组件>/config`（入库）+ `services/<组件>/data`（gitignore，`**/data/` 一条规则） | §4 |
+| ② 配置、运行时数据放 devops | `services/<组件>/config`（入库）+ `services/<组件>/data`（gitignore，`**/.data/` 一条规则） | §4 |
 | ③ Redis 集群 + 哨兵 | 独立两块 IP 段（`.2.x` 哨兵、`.3.x` 集群），配置互斥、profile 隔离，状态文件持久化 | §5 §8 |
 | ④ PG 主从 + Kafka / MySQL / MongoDB / RocketMQ / RabbitMQ / etcd / Consul / NATS | 13 域块号表 + 身份固化清单 + 统一 bootstrap 契约 + 内存分档 | §3 §5 §8 §10 |
 | ⑤ 每个组件都要有集群/主从形态 | §5.2 集群形态选型表（每域最小可用 HA 与理由）；§5.3 工具豁免清单 | §5.2 §5.3 |
@@ -66,7 +66,7 @@
 | `172.28.0.0/16` 与宿主路由 | ✅ 无冲突（宿主已用 `192.168.1.0/24`、`192.168.138.0/23`） | 可直接采用 /16 |
 | `include: services/*/compose.yml`（glob） | ❌ 不支持 | 聚合文件用**生成**而非手写清单 |
 | `include` + `profiles` 透传 | ✅ 无 profile 时服务为空 | 组件文件必须自带 `profiles` |
-| 组件内 `./data`、`./config` 相对路径基准 | ✅ 以**组件文件所在目录**为基准 | 组件可整体搬迁，高内聚成立 |
+| 组件内 `./.data`、`./config` 相对路径基准 | ✅ 以**组件文件所在目录**为基准 | 组件可整体搬迁，高内聚成立 |
 | 物理内存 / CPU | 48 GB / 14 core | — |
 | Docker VM 可见内存 | **15.7 GB** | 全量 ha **14.75 GB**（余量 ≈ 0.95 GB）→ 装得下，但**仍禁止常驻**（§9.1） |
 
@@ -107,12 +107,12 @@
 1. **同一产品、同一镜像**（都是 `redis:7.4`）；
 2. **profile 互斥且不同时运行**（哨兵栈与集群栈语义互斥，不会共存）；
 3. **共享配置占比高**（`config/base/redis-base.conf`、exporter 定义、`render/status/reset` 脚本骨架均复用）；
-4. **状态仍按 profile 物理隔离**（`data/sentinel/<node>/` vs `data/cluster/<node>/`）。
+4. **状态仍按 profile 物理隔离**（`.data/sentinel/<node>/` vs `.data/cluster/<node>/`）。
 
 > 与观测域的区别：prometheus / alertmanager / grafana / jaeger 是四个不同产品、可同时运行、重置影响面各异，所以必须拆目录（DEC-24）；
 > Redis 两套形态是同一产品的两种拓扑且互斥运行。判据看"是否同一产品 + 能否共存 + 配置能否复用"，不是"拓扑有几个"。
 >
-> 判据可直接验收：`make stack-reset S=grafana` 不该丢 TSDB；`make stack-reset S=redis-sentinel` **只**清 `data/sentinel/`，不碰 `data/cluster/`；
+> 判据可直接验收：`make stack-reset S=grafana` 不该丢 TSDB；`make stack-reset S=redis-sentinel` **只**清 `.data/sentinel/`，不碰 `.data/cluster/`；
 > `make stack-reset S=pg` 不该影响 `pg` 的 DCS 之外的任何栈。
 
 ---
@@ -187,7 +187,7 @@ devops/
 │   │   ├── compose.yml
 │   │   ├── config/nginx.conf       # 主配置（log_format / gzip / connection_upgrade map）
 │   │   ├── scripts/{render,status,reset}.sh      # 无 bootstrap（无状态）
-│   │   └── data/conf.d/            # 生成物：每个 [routes] 行 → <host>.conf
+│   │   └── .data/conf.d/            # 生成物：每个 [routes] 行 → <host>.conf
 │   ├── redis/                      # ★ 复合栈：一个目录，两个互斥 profile
 │   │   ├── compose.yml             # profiles: redis-sentinel | redis-cluster
 │   │   ├── config/
@@ -198,7 +198,7 @@ devops/
 │   │   ├── scripts/
 │   │   │   ├── sentinel/{render,bootstrap,status,reset}.sh   # 1M + 2R + 3S + exporter
 │   │   │   └── cluster/{render,bootstrap,status,reset}.sh    # 3M + 3R + 16384 slots
-│   │   └── data/
+│   │   └── .data/
 │   │       ├── sentinel/<node>/    # redis-master / replica-1/2 / sentinel-1/2/3 / solo
 │   │       └── cluster/<node>/     # rc-1/2/3 / rc-1r/2r/3r / solo
 │   ├── pg/                         # patroni-1..3 (.1.11–13) + pg-dcs-1..3 (.1.31–33) + haproxy×2 (.1.34–35) + exporter (.1.41)
@@ -209,7 +209,7 @@ devops/
 │   │   │   ├── pg_hba.conf
 │   │   │   └── haproxy.cfg.tpl     # 5000 主写 / 5001 只读 / 7000 stats
 │   │   ├── scripts/{render,bootstrap,status,reset,failover-drill}.sh
-│   │   └── data/
+│   │   └── .data/
 │   │       ├── patroni-{1,2,3}/    # PG 数据 + patroni 状态
 │   │       ├── pg-dcs-{1,2,3}/     # etcd 数据（DCS）
 │   │       └── solo/
@@ -217,42 +217,42 @@ devops/
 │   │   ├── compose.yml
 │   │   ├── config/{my.cnf.tpl, router.cnf.tpl}
 │   │   ├── scripts/{render,bootstrap,status,reset}.sh
-│   │   └── data/{mysql-{1,2,3},router-{1,2},solo}/
+│   │   └── .data/{mysql-{1,2,3},router-{1,2},solo}/
 │   ├── mongo/                      # mongo-1..3 (.5.11–13) + exporter (.5.41)
 │   │   ├── compose.yml
 │   │   ├── config/{mongod.conf.tpl, keyfile, rs-init.js.tpl}
 │   │   ├── scripts/{render,bootstrap,status,reset}.sh
-│   │   └── data/{mongo-{1,2,3},solo}/
+│   │   └── .data/{mongo-{1,2,3},solo}/
 │   ├── kafka/                      # broker×3 (.6.11–13) + controller×3 (.6.21–23) + exporter (.6.41)
 │   │   ├── compose.yml
 │   │   ├── config/{server.properties.tpl, controller.properties.tpl}
 │   │   ├── scripts/{render,bootstrap,status,reset}.sh
-│   │   └── data/{kafka-{1,2,3},ctrl-{1,2,3},solo}/
+│   │   └── .data/{kafka-{1,2,3},ctrl-{1,2,3},solo}/
 │   ├── rocketmq/                   # namesrv×2 (.7.11–12) + broker×3 DLedger (.7.21–23) + exporter (.7.41)
 │   │   ├── compose.yml
 │   │   ├── config/{broker.conf.tpl, dledger.conf.tpl}
 │   │   ├── scripts/{render,bootstrap,status,reset}.sh
-│   │   └── data/{broker-{1,2,3},solo}/
+│   │   └── .data/{broker-{1,2,3},solo}/
 │   ├── rabbitmq/                   # rabbit-1..3 (.8.11–13)，quorum queue，原生 :15692 指标
 │   │   ├── compose.yml
 │   │   ├── config/{rabbitmq.conf.tpl, enabled_plugins, definitions.json}
 │   │   ├── scripts/{render,bootstrap,status,reset}.sh
-│   │   └── data/{rabbit-{1,2,3},solo}/
+│   │   └── .data/{rabbit-{1,2,3},solo}/
 │   ├── etcd/                       # etcd-1..3 (.9.11–13)，原生 :2379/metrics
 │   │   ├── compose.yml
 │   │   ├── config/etcd.conf.tpl
 │   │   ├── scripts/{render,bootstrap,status,reset}.sh
-│   │   └── data/{etcd-{1,2,3},solo}/
+│   │   └── .data/{etcd-{1,2,3},solo}/
 │   ├── consul/                     # consul-1..3 (.10.11–13)，原生 :8500/v1/agent/metrics
 │   │   ├── compose.yml
 │   │   ├── config/consul.hcl.tpl
 │   │   ├── scripts/{render,bootstrap,status,reset}.sh
-│   │   └── data/{consul-{1,2,3},solo}/
+│   │   └── .data/{consul-{1,2,3},solo}/
 │   ├── nats/                       # nats-1..3 (.11.11–13) + nats-exporter (.11.41)，JetStream R3
 │   │   ├── compose.yml
 │   │   ├── config/nats.conf.tpl
 │   │   ├── scripts/{render,bootstrap,status,reset}.sh
-│   │   └── data/{nats-{1,2,3},solo}/
+│   │   └── .data/{nats-{1,2,3},solo}/
 │   ├── nacos/                      # 3.x：nacos-server-1..3 (.13.11–13) + nacos-console (.13.32)
 │   │   ├── compose.yml             # 两组 service：server×3 + console×1（同属 profile nacos）
 │   │   ├── config/
@@ -260,42 +260,42 @@ devops/
 │   │   │   ├── cluster.conf.tpl            # 3 个固定 IP（render 注入）
 │   │   │   └── mysql-schema.sql            # **3.x** 的 nacos_config 建表脚本（不可混用 2.x）
 │   │   ├── scripts/{render,bootstrap,status,reset}.sh
-│   │   └── data/nacos-server-{1,2,3}/     # logs / data（配置与注册数据在 MySQL）
+│   │   └── .data/nacos-server-{1,2,3}/     # logs / data（配置与注册数据在 MySQL）
 │   ├── prometheus/                 # prometheus-1 (.12.11, both) + prometheus-2 (.12.12, ha)
 │   │   ├── compose.yml
 │   │   ├── config/
 │   │   │   ├── prometheus.yml.tpl  # scrape_configs 由 ini 的 exporter 行 + 原生指标表生成
 │   │   │   └── rules/{redis.rules.yml, infra.rules.yml}
 │   │   ├── scripts/{render,bootstrap,status,reset}.sh
-│   │   └── data/prometheus-{1,2}/  # TSDB + 渲染后的 prometheus.yml
+│   │   └── .data/prometheus-{1,2}/  # TSDB + 渲染后的 prometheus.yml
 │   ├── alertmanager/               # alertmanager (.12.21, both)
 │   │   ├── compose.yml
 │   │   ├── config/alertmanager.yml.tpl     # route / receivers（默认 nul，不外发）
 │   │   ├── scripts/{render,bootstrap,status,reset}.sh
-│   │   └── data/alertmanager/      # silences / notify 日志 / 渲染后配置
+│   │   └── .data/alertmanager/      # silences / notify 日志 / 渲染后配置
 │   ├── grafana/                    # grafana (.12.31, both)
 │   │   ├── compose.yml
 │   │   ├── config/provisioning/
 │   │   │   ├── datasources/{prometheus.yml,jaeger.yml}
 │   │   │   └── dashboards/{provider.yml, redis-sentinel.json, redis-cluster.json, infra.json, obs-self.json}
 │   │   ├── scripts/{render,status,reset}.sh
-│   │   └── data/grafana/           # grafana.db（SQLite）
+│   │   └── .data/grafana/           # grafana.db（SQLite）
 │   ├── jaeger/                     # jaeger (.12.32, both)
 │   │   ├── compose.yml
 │   │   ├── config/config.yaml      # OTel Collector 格式（OTLP receiver + jaeger_storage）
 │   │   ├── config/sampling.json    # 采样策略
 │   │   ├── scripts/{render,bootstrap,status,reset}.sh
-│   │   └── data/jaeger/badger/     # trace 存储（TTL 72h）
+│   │   └── .data/jaeger/badger/     # trace 存储（TTL 72h）
 │   └── docsify/                    # docsify-1 (.20.11, both)：仓库 docs/ 只读浏览，HA 豁免
-│       ├── compose.yml             # 嵌套只读挂载：docs/ → /docs/content；data/site → /docs
+│       ├── compose.yml             # 嵌套只读挂载：docs/ → /docs/content；.data/site → /docs
 │       ├── config/index.html.tpl   # 站点壳模板（@TITLE@ / @BASEPATH@ 由 render 替换）
 │       ├── config/assets/          # 从镜像 4.4.4 导出的离线前端资产（升版本时重新导出）
-│       ├── scripts/{render,bootstrap,status}.sh   # 无 reset（无状态，走默认清 data/）
-│       └── data/site/              # 生成物：index.html / assets / _sidebar.md
+│       ├── scripts/{render,bootstrap,status}.sh   # 无 reset（无状态，走默认清 .data/）
+│       └── .data/site/              # 生成物：index.html / assets / _sidebar.md
 ├── scripts/
 │   ├── doctor.sh                   # 15 项体检（§6.3）
 │   ├── render-all.sh               # ini → compose.generated.yml + 各栈配置渲染
-│   ├── backup-all.sh               # find services -name data → 归档
+│   ├── backup-all.sh               # find services -name .data → 归档
 │   ├── trace-demo.sh               # 推一条 OTLP trace（§16.5）
 │   └── prepull.sh                  # 按 ini 预拉镜像（D01）
 ├── env/{.env.example, .env}
@@ -307,8 +307,8 @@ devops/
 ```
 
 ```gitignore
-**/data/**
-!**/data/.gitkeep
+**/.data/**
+!**/.data/.gitkeep
 env/.env
 /.generated/
 /compose.generated.yml
@@ -316,8 +316,8 @@ env/.env
 /backups/
 ```
 
-> **`config/` 只放模板，`render.sh` 的产物一律落 `data/`**（DEC-11）：nginx 的路由 `conf.d/`、prometheus 的 `prometheus.yml`、
-> sentinel 的 `sentinel.conf`、kafka 的 `server.properties`、kafka 的 `meta.properties` 都在 `data/` 下——它们要么运行时重写，要么含渲染出的 IP，不能入库。
+> **`config/` 只放模板，`render.sh` 的产物一律落 `.data/`**（DEC-11）：nginx 的路由 `conf.d/`、prometheus 的 `prometheus.yml`、
+> sentinel 的 `sentinel.conf`、kafka 的 `server.properties`、kafka 的 `meta.properties` 都在 `.data/` 下——它们要么运行时重写，要么含渲染出的 IP，不能入库。
 > 每个目录的 `scripts/` 按需裁剪：无状态的栈没有 `bootstrap`（nginx / grafana）。
 >
 > **生成契约（P0 起）**：`services/<stack>/compose.yml` 是**手写骨架**，只写
@@ -373,7 +373,7 @@ env/.env
 > 行内只写 4 列（`name | ip | ports | role`）= **省略 mode，即 mode=ha**；本表 43 行如此（其余 28 行为 `both`），只有 `both` 节点才写第 5 列。
 > 这样写是为了让"ha-only 成员"成为默认，减少一处手工维护。
 
-**solo 复用该栈 `.11` 节点的 IP**（两形态互斥、不同时运行），但**配置模板与数据目录独立**（`config/solo/`、`data/<group>/solo/`），互不污染。
+**solo 复用该栈 `.11` 节点的 IP**（两形态互斥、不同时运行），但**配置模板与数据目录独立**（`config/solo/`、`.data/<group>/solo/`），互不污染。
 
 ```ini
 [global]
@@ -473,7 +473,7 @@ nacos-server-2   | 172.28.13.12 | 8848,9848,9849,7848 | server
 nacos-server-3   | 172.28.13.13 | 8848,9848,9849,7848 | server
 nacos-console    | 172.28.13.32 | 8080                | console | both
 
-# observability 域（§16）：四栈共享 172.28.12.0/24，各自有目录/profile/data
+# observability 域（§16）：四栈共享 172.28.12.0/24，各自有目录/profile/.data
 [stack.prometheus]
 prometheus-1     | 172.28.12.11 | 9090 | metrics | both
 prometheus-2     | 172.28.12.12 | 9090 | metrics
@@ -519,11 +519,11 @@ docsify.localhost      | 172.28.20.11 | 3000  | subdomain-only
 | **consul** | ×3 | `bootstrap_expect 3` | `retry_join`、gossip key |
 | **nats** | ×3 | 路由全互联 + JetStream R3 | `server_name`、`--routes` |
 | **nacos** | server ×3 + console ×1（3.x 起控制台独立）+ **复用 mysql 栈的库**（Router `:6446`） | 集群模式必须共享一份配置库（内嵌 Derby 不支持多节点共享）；3.x 把控制台拆成无状态前端，1 个 console 指向 3 个 server 即可；复用 mysql 避免再建数据库域（DEC-36） | `cluster.conf` 3 个固定 IP、`token.secret.key` 三节点一致、**3.x 的** `mysql-schema.sql`、`nacos.console.port=8080` |
-| **prometheus** | 单实例（solo）/ ×2 冗余采集（ha） | 拉模式无共识，HA 语义 = 冗余采集而非故障转移 | `data/prometheus-N/`（TSDB）、`prometheus.yml`（由 ini 生成） |
-| **alertmanager** | 单实例 | 告警路由无状态（silence 落盘） | `config/alertmanager.yml`、`data/alertmanager/` |
-| **grafana** | 单实例 | 无状态，dashboard/数据源全部走 provisioning | `config/provisioning/**`、`data/grafana/` |
-| **jaeger** | 单实例（**豁免**） | 本地 Badger 是单写者，双实例无法共享；真 HA 需 ES/Cassandra → N09 | `config/config.yaml`、`data/jaeger/badger/` |
-| **docsify** | 单实例（**豁免**） | 纯静态浏览，无状态、无成员关系；内容就是仓库 `docs/`，多实例只会得到同一个只读目录 | `config/index.html.tpl`、`data/site/`（渲染物）、`[routes]` 的 `docsify.localhost` |
+| **prometheus** | 单实例（solo）/ ×2 冗余采集（ha） | 拉模式无共识，HA 语义 = 冗余采集而非故障转移 | `.data/prometheus-N/`（TSDB）、`prometheus.yml`（由 ini 生成） |
+| **alertmanager** | 单实例 | 告警路由无状态（silence 落盘） | `config/alertmanager.yml`、`.data/alertmanager/` |
+| **grafana** | 单实例 | 无状态，dashboard/数据源全部走 provisioning | `config/provisioning/**`、`.data/grafana/` |
+| **jaeger** | 单实例（**豁免**） | 本地 Badger 是单写者，双实例无法共享；真 HA 需 ES/Cassandra → N09 | `config/config.yaml`、`.data/jaeger/badger/` |
+| **docsify** | 单实例（**豁免**） | 纯静态浏览，无状态、无成员关系；内容就是仓库 `docs/`，多实例只会得到同一个只读目录 | `config/index.html.tpl`、`.data/site/`（渲染物）、`[routes]` 的 `docsify.localhost` |
 
 > 表中 17 个组件 ↔ 18 个部署单元：`redis` 一行对应 `redis-sentinel` / `redis-cluster` 两个互斥 profile。
 
@@ -589,7 +589,7 @@ make stack-switch S=pg MODE=ha # 先停当前形态再起目标形态（数据�
 #### 5.5.2 纪律
 
 1. `MODE=solo` 只启动 `mode IN (solo,both)` 的节点；`MODE=ha` 只启动 `mode IN (ha,both)`。
-2. 两形态**数据目录物理隔离**（`data/<group>/solo/` vs `data/<group>/<node>/`；普通栈为 `data/solo/` vs `data/<node>/`），禁止直接互相搬运（集群元数据不兼容）。
+2. 两形态**数据目录物理隔离**（`.data/<group>/solo/` vs `.data/<group>/<node>/`；普通栈为 `data/solo/` vs `.data/<node>/`），禁止直接互相搬运（集群元数据不兼容）。
 3. `render.sh` 同时生成两套配置，`doctor.sh` 第 13 项校验 profile 与 ini `mode` 一致。
 4. solo 是**取巧的简化**，**solo 的结论不是集群的结论**——`docs/stacks.md` 每栈标注语义差异。逐栈的简化方式：
 
@@ -651,14 +651,14 @@ make stack-switch S=pg MODE=ha # 先停当前形态再起目标形态（数据�
 | 7 | `docker context` 必须是 `orbstack`（方案前提） | 失败并解释原因 |
 | 8 | `172.28.0.0/16` 与宿主路由无重叠 | 失败 |
 | 9 | `env/.env` 存在且权限 `600` | 提示 |
-| 10 | 各栈 `data/<node>` 存在且属主正确（uid 999：pg / redis / mysql / mongo） | 提示修复命令 |
+| 10 | 各栈 `.data/<node>` 存在且属主正确（uid 999：pg / redis / mysql / mongo） | 提示修复命令 |
 | 11 | **HA 拓扑完整性**：每域成员数与 ini 一致，且为奇数法定人数（etcd/consul/mongo/rabbit）；哨兵 3；cluster 3M3R 覆盖 16384 slots；豁免栈不得声明多余副本 | 失败 |
 | 12 | **演练保护**：`restart: unless-stopped` 存在时，演练必须走 `stop` 而非 `kill` | 提示 |
-| 13 | **双形态一致性**：profile 与 ini `mode` 一致；`data/<group>/solo` 与 `data/<group>/<node>` 不混用 | 失败 |
+| 13 | **双形态一致性**：profile 与 ini `mode` 一致；`.data/<group>/solo` 与 `.data/<group>/<node>` 不混用 | 失败 |
 | 14 | **路由与引用校验**：`[routes]` host 唯一、upstream IP 属于已启用块；观测四栈跨栈引用（Grafana→Prometheus、Grafana→Jaeger、Prom→AM）、`render.sh` 注入的其它地址（Kafka `advertised.listeners`、Patroni DCS、Router seeds、**nacos→mysql `db.url.0`**）都必须在 ini 中存在且对应域 mode 已启用 | 失败 |
-| 15 | **运行态健康**：按 `data/.mode-*` marker 算出"该在跑的容器"，逐个查 `running` + `healthy`；`restarting` / `unhealthy` = FAIL，已部署但未在跑 = WARN（并提示 daemon 重启后需重跑 `make stack-up`）。`RestartCount` 只当线索报在 PASS 详情里，不单独判 WARN（它不会自动清零） | 失败 / 提示 |
+| 15 | **运行态健康**：按 `.data/.mode-*` marker 算出"该在跑的容器"，逐个查 `running` + `healthy`；`restarting` / `unhealthy` = FAIL，已部署但未在跑 = WARN（并提示 daemon 重启后需重跑 `make stack-up`）。`RestartCount` 只当线索报在 PASS 详情里，不单独判 WARN（它不会自动清零） | 失败 / 提示 |
 
-> 第 4/5/10/13 项按"**已启用的栈**"取集合：P0–P6 期只校验已存在的目录与 `data/` 子树，未开工的栈不参与判定；
+> 第 4/5/10/13 项按"**已启用的栈**"取集合：P0–P6 期只校验已存在的目录与 `.data/` 子树，未开工的栈不参与判定；
 > 全部 18 个部署单元建完后（P7）才要求全量通过。这样 `make doctor` 在每一期都能作为"本期绿灯"使用，而不是等到最后才全绿。
 >
 > 第 1–14 项全部是**静态校验**（ini / compose / 脚本 / 宿主路由），它们能在全停时跑通；
@@ -671,26 +671,26 @@ make stack-switch S=pg MODE=ha # 先停当前形态再起目标形态（数据�
 | 栈 | 必须写死 | 必须持久化的状态文件 | 搞错的症状 |
 |---|---|---|---|
 | nginx | 两实例 `server_name` / 监听端口错开；`[routes]` 生成的 upstream | 无状态 | 后端全挂时无法判断入口是否存活 |
-| pg (Patroni) | `scope`、`name`、`restapi`、`dcs.etcd3.hosts`、`bootstrap.dcs` | `data/patroni-N/`（含 `postgresql0/`）、DCS 数据 | 重启后 leader 丢失 / split-brain |
-| redis-sentinel | `sentinel monitor devmaster 172.28.2.11 6379 2`；`requirepass` 与 `masterauth` **必须一致** | `data/sentinel/sentinel-N/sentinel.conf`（**运行时重写**）、`data/sentinel/redis-master/appendonlydir` | 切主后新主拒绝写入 |
-| redis-cluster | `cluster-enabled yes`；总线端口 = 端口 +10000；`cluster-announce-ip` = 容器 IP | `data/cluster/<node>/nodes.conf`、AOF/RDB | 重启后忘记集群身份，需整栈重建 |
-| mysql | `server_id` 唯一、`gtid_mode=ON`、`group_replication_group_seeds` | `data/mysql-N/`、Router 的元数据缓存 | MGR 加入失败 / Router 指向旧主 |
-| mongo | `--replSet`、`rs.initiate` 成员地址、keyfile | `data/mongo-N/db` | rs 地址与实际不符，选主失败 |
-| kafka | `advertised.listeners` = 容器 IP；`controller.quorum.voters` = 3 固定 IP；`clusterId` | `data/kafka-N/meta.properties` | 客户端拿到不可达地址；clusterId 漂移需重新 format |
-| rocketmq | **`brokerIP1`**、`namesrvAddr`、`dLegerPeers` / `dLegerSelfId` | `data/broker-N/store`（DLedger 含 `dledgerconfig`） | 消费者连不上；成员 ID 重复导致选主失败 |
-| rabbitmq | `hostname:` 固定且唯一、erlang cookie 一致 | `data/rabbit-N/mnesia` | 节点名变化 → 集群分裂、数据看似丢失 |
-| etcd | `--initial-cluster` peer URL、`--initial-cluster-token` | `data/etcd-N/` | 重启后无法重组 |
-| consul | `-node` 名、`retry_join` 静态 IP、gossip key | `data/consul-N/` | 节点重名 / gossip 失败 |
-| nats | `server_name`、`--routes` 静态 IP | `data/nats-N/jetstream` | 路由不通、JetStream 副本不达 quorum |
-| prometheus | `--web.external-url`、`--storage.tsdb.retention.time`、`scrape_configs` 由 ini 生成 | `data/prometheus-N/`（TSDB chunk/WAL） | 手改 `prometheus.yml` 导致目标漂移 |
-| alertmanager | `--web.external-url`、`route` / `receivers`（默认 `nul`，不外发） | `data/alertmanager/`（`silences`、`notify`） | 静默丢失；告警重复或静默失效 |
-| grafana | `root_url=http://grafana.localhost/`、`GF_PATHS_PROVISIONING`、数据源指向 `172.28.12.11:9090` 与 `172.28.12.32:16686` | `data/grafana/`（SQLite） | 面板丢配置（未走 provisioning）；数据源指向旧 Prom / 旧 Jaeger |
-| jaeger | `jaeger_storage.badger.directory`（= `data/jaeger/badger`）、OTLP 监听 `0.0.0.0:4317/4318`、`jaeger_query.base_path`、采样策略文件 | `data/jaeger/badger/`（trace 存储）、`config/sampling.json` | 改了 `data/` 路径 → 历史 trace "消失"；采样写错 → UI 有服务无链路 |
-| **nacos-server** | `spring.sql.init.platform=mysql` + `db.url.0` 指向 `172.28.4.31:6446/nacos_config`；`cluster.conf` 3 个固定 IP；`token.secret.key`（**若开启鉴权（D36=A）则三节点必须一致**）；`nacos.inetutils.ip-address` = 容器 IP；**schema 必须是 3.x 的 `mysql-schema.sql`** | **数据在 MySQL**（`nacos_config` 库）；`data/nacos-server-N/logs/` | token 不一致 → 节点互踢/403；IP 推断错 → gRPC 拿到不可达地址；用 2.x schema → 启动期建表冲突 |
+| pg (Patroni) | `scope`、`name`、`restapi`、`dcs.etcd3.hosts`、`bootstrap.dcs` | `.data/patroni-N/`（含 `postgresql0/`）、DCS 数据 | 重启后 leader 丢失 / split-brain |
+| redis-sentinel | `sentinel monitor devmaster 172.28.2.11 6379 2`；`requirepass` 与 `masterauth` **必须一致** | `.data/sentinel/sentinel-N/sentinel.conf`（**运行时重写**）、`.data/sentinel/redis-master/appendonlydir` | 切主后新主拒绝写入 |
+| redis-cluster | `cluster-enabled yes`；总线端口 = 端口 +10000；`cluster-announce-ip` = 容器 IP | `.data/cluster/<node>/nodes.conf`、AOF/RDB | 重启后忘记集群身份，需整栈重建 |
+| mysql | `server_id` 唯一、`gtid_mode=ON`、`group_replication_group_seeds` | `.data/mysql-N/`、Router 的元数据缓存 | MGR 加入失败 / Router 指向旧主 |
+| mongo | `--replSet`、`rs.initiate` 成员地址、keyfile | `.data/mongo-N/db` | rs 地址与实际不符，选主失败 |
+| kafka | `advertised.listeners` = 容器 IP；`controller.quorum.voters` = 3 固定 IP；`clusterId` | `.data/kafka-N/meta.properties` | 客户端拿到不可达地址；clusterId 漂移需重新 format |
+| rocketmq | **`brokerIP1`**、`namesrvAddr`、`dLegerPeers` / `dLegerSelfId` | `.data/broker-N/store`（DLedger 含 `dledgerconfig`） | 消费者连不上；成员 ID 重复导致选主失败 |
+| rabbitmq | `hostname:` 固定且唯一、erlang cookie 一致 | `.data/rabbit-N/mnesia` | 节点名变化 → 集群分裂、数据看似丢失 |
+| etcd | `--initial-cluster` peer URL、`--initial-cluster-token` | `.data/etcd-N/` | 重启后无法重组 |
+| consul | `-node` 名、`retry_join` 静态 IP、gossip key | `.data/consul-N/` | 节点重名 / gossip 失败 |
+| nats | `server_name`、`--routes` 静态 IP | `.data/nats-N/jetstream` | 路由不通、JetStream 副本不达 quorum |
+| prometheus | `--web.external-url`、`--storage.tsdb.retention.time`、`scrape_configs` 由 ini 生成 | `.data/prometheus-N/`（TSDB chunk/WAL） | 手改 `prometheus.yml` 导致目标漂移 |
+| alertmanager | `--web.external-url`、`route` / `receivers`（默认 `nul`，不外发） | `.data/alertmanager/`（`silences`、`notify`） | 静默丢失；告警重复或静默失效 |
+| grafana | `root_url=http://grafana.localhost/`、`GF_PATHS_PROVISIONING`、数据源指向 `172.28.12.11:9090` 与 `172.28.12.32:16686` | `.data/grafana/`（SQLite） | 面板丢配置（未走 provisioning）；数据源指向旧 Prom / 旧 Jaeger |
+| jaeger | `jaeger_storage.badger.directory`（= `.data/jaeger/badger`）、OTLP 监听 `0.0.0.0:4317/4318`、`jaeger_query.base_path`、采样策略文件 | `.data/jaeger/badger/`（trace 存储）、`config/sampling.json` | 改了 `data/` 路径 → 历史 trace "消失"；采样写错 → UI 有服务无链路 |
+| **nacos-server** | `spring.sql.init.platform=mysql` + `db.url.0` 指向 `172.28.4.31:6446/nacos_config`；`cluster.conf` 3 个固定 IP；`token.secret.key`（**若开启鉴权（D36=A）则三节点必须一致**）；`nacos.inetutils.ip-address` = 容器 IP；**schema 必须是 3.x 的 `mysql-schema.sql`** | **数据在 MySQL**（`nacos_config` 库）；`.data/nacos-server-N/logs/` | token 不一致 → 节点互踢/403；IP 推断错 → gRPC 拿到不可达地址；用 2.x schema → 启动期建表冲突 |
 | **nacos-console** | `nacos.console.port=8080`、指向 server 列表（`172.28.13.11:8848` 等，由 render 注入） | 无状态（不落盘） | console 指向旧 server / 端口未对齐 → 打开空白或 502 |
-| **docsify** | `[routes]` 的 `docsify.localhost -> 172.28.20.11:3000`；站点壳（`index.html` / `_sidebar.md` / `assets/`）由 render 生成 | 无状态：内容就是仓库 `docs/`（只读挂载），`data/site/` 全部可重建 | 把内容目录做成可写挂载 → 镜像自举会往 `docs/` 里脚手架（已用 `DOCSIFY_AUTO_INIT=false` + `:ro` 双保险）；`_sidebar.md` 只在 render 时生成，新增 md 不重渲染就不进侧栏 |
+| **docsify** | `[routes]` 的 `docsify.localhost -> 172.28.20.11:3000`；站点壳（`index.html` / `_sidebar.md` / `assets/`）由 render 生成 | 无状态：内容就是仓库 `docs/`（只读挂载），`.data/site/` 全部可重建 | 把内容目录做成可写挂载 → 镜像自举会往 `docs/` 里脚手架（已用 `DOCSIFY_AUTO_INIT=false` + `:ro` 双保险）；`_sidebar.md` 只在 render 时生成，新增 md 不重渲染就不进侧栏 |
 
-**这些文件全部落在 `services/<stack>/data/` 下（复合栈再加一层 profile：`services/redis/data/<group>/<node>/`）→ `backup-all.sh` 一并归档 → 恢复即恢复身份。**
+**这些文件全部落在 `services/<stack>/data/` 下（复合栈再加一层 profile：`services/redis/.data/<group>/<node>/`）→ `backup-all.sh` 一并归档 → 恢复即恢复身份。**
 
 ---
 
@@ -706,11 +706,11 @@ services/<stack>/
 ├── compose.yml        # 每个 service 都带 profiles: ["<profile>"]
 ├── config/            # 模板（入库），以 :ro 挂载
 ├── scripts/
-│   ├── render.sh      # stock/network.ini → data/ 下真实配置
+│   ├── render.sh      # stock/network.ini → .data/ 下真实配置
 │   ├── bootstrap.sh   # 幂等：先探测状态，已完成则 exit 0
 │   ├── status.sh      # 成员/quorum/复制状态
-│   └── reset.sh       # 停容器 → 删本 profile 的 data/ 子树 → 重新 bootstrap
-└── data/<node>/       # 运行时（忽略入库）
+│   └── reset.sh       # 停容器 → 删本 profile 的 .data/ 子树 → 重新 bootstrap
+└── .data/<node>/       # 运行时（忽略入库）
 ```
 
 ### 8.0.1 复合栈 `services/redis/`（唯一）
@@ -725,15 +725,15 @@ services/redis/
 ├── scripts/
 │   ├── sentinel/{render,bootstrap,status,reset}.sh
 │   └── cluster/{render,bootstrap,status,reset}.sh
-└── data/
-    ├── sentinel/<node>/           # solo：data/sentinel/solo/
-    └── cluster/<node>/            # solo：data/cluster/solo/
+└── .data/
+    ├── sentinel/<node>/           # solo：.data/sentinel/solo/
+    └── cluster/<node>/            # solo：.data/cluster/solo/
 ```
 
 四条硬约束（不满足就不该继续用复合形式，应拆回两个目录）：
 
 1. `compose.yml` 里**每个 service 必须带 profile**（`redis-sentinel` 或 `redis-cluster`），禁止无 profile 的服务（否则 `down` 会误删另一组）。
-2. `reset.sh` **只能删本组子树**（`data/sentinel/` 或 `data/cluster/`）。
+2. `reset.sh` **只能删本组子树**（`.data/sentinel/` 或 `.data/cluster/`）。
 3. `render.sh` 两组各自独立，但共用 `config/base/redis-base.conf` 的 include（单一事实源）。
 4. `doctor.sh` 按 ini 的 `[stack.*]` 段（而不是目录）校验 profile 与 `mode`，因此第 4/5/13 项不需特殊处理。
 
@@ -933,8 +933,8 @@ redis_exporter: oliver006/redis_exporter:v1.67.0  # X.Y.Z：小版本会改指�
 | DEC-7 | Kafka 用 KRaft（无 ZK） | 少 3 个容器，官方方向 |
 | DEC-8 | MySQL 基线用 MGR（单主自动选主）+ Router | 需求⑤：异步主从切换需人工 |
 | DEC-9 | RabbitMQ 集群基线 3 节点，队列语义由声明决定 | quorum 需要 3 副本；测试需要灵活性 |
-| DEC-10 | 数据放组件内 `data/`，不集中根目录 | 生命周期与组件一致；`**/data/` 一条 gitignore |
-| DEC-11 | Sentinel conf / `nodes.conf` / 渲染产物放 `data/`，config 只存模板 | 运行时重写或含渲染 IP，只读挂载必然失败 |
+| DEC-10 | 数据放组件内 `data/`，不集中根目录 | 生命周期与组件一致；`**/.data/` 一条 gitignore |
+| DEC-11 | Sentinel conf / `nodes.conf` / 渲染产物放 `.data/`，config 只存模板 | 运行时重写或含渲染 IP，只读挂载必然失败 |
 | DEC-12 | 不默认使用 keepalived/VIP，nginx 双实例 + 客户端双地址 | 单机 VRRP 无法验证真实切换 |
 | DEC-13 | edge 域不放数据库 | DB 由各自 HA 栈提供，避免双份配置漂移 |
 | DEC-14 | RocketMQ 用 DLedger（Raft）3 broker | 原生主从切换需人工 |
@@ -966,8 +966,8 @@ redis_exporter: oliver006/redis_exporter:v1.67.0  # X.Y.Z：小版本会改指�
 | DEC-43 | **`TZ=Asia/Shanghai`**，只写 `base/anchors.yml` 一处；MySQL / Mongo 统一 `utf8mb4` | 本地调试看日志/写 SQL 时不用心算时区；集中一处才能在需要时整体切 UTC（跨时区协作只有这一个开关）。组件内出现 `TZ=` 违反铁律一 |
 | **DEC-44** | **Nacos 直接上 3.x**（D35=B）：`nacos-server`×3 + **`nacos-console`×1**（控制台独立、8080、无状态），schema 用 **3.x** 的 `mysql-schema.sql`；端口表/路由/身份清单/probe 全部按 3.x 更新 | 3.x 是官方方向，2.x 已进入维护期；控制台拆成无状态前端后，1 个 console 指向 3 个 server 即可（少 2 个容器、少 2 份状态）。代价是**端口与 schema 与 2.x 不兼容**，且 3.x 资料较新 → 把"console 打包方式 / health 与 metrics 路径 / schema 文件名 / 鉴权默认"列为 P5 首次启动的**锁定四项**（R28） |
 | **DEC-45** | **P0 生成与运行契约**（D04–D07 全部取 A）：凭据用 `env/.env` + `scripts/gen-secrets.sh`（chmod 600，gitignore）；`base/anchors.yml` 由 `render-all.py` 在生成期展开；`services/*/compose.yml` 只作手写骨架，渲染器生成 `.generated/<stack>.yml` 与根聚合 compose；ini 保持竖线 5 列、`mode` 缺省 `ha` | 四项都是 P0 阻塞项，共同理由是"唯一输入 + 生成物可丢弃"：IP/镜像/锚点/凭据各只有一个事实源，根 compose 与 `.generated/` 可随时重建。代价是不能手改生成物，且每次改 ini/base 后必须 `make render`；doctor 第 4/5/13 项兜底 |
-| **DEC-46** | **启用第 15 域 `.20.x` docsify**（`services/docsify/`，`docsify-1`×1，`172.28.20.11:3000`，`role=docs`、`mode=both`）：用 `rockben/docsify-server` 把仓库 `docs/` 变成可浏览站点，经 `docsify.localhost` 从宿主访问；**内容以只读嵌套挂载挂到 `/docs/content`**，站点壳（`index.html` / `assets/` / `_sidebar.md`）渲染到 `data/site/`；`DOCSIFY_AUTO_INIT=false` 关掉镜像自举；HA 全量豁免（§5.3） | 文档体量（plan.md 1200+ 行）已不适合直读文件；docsify 无需构建、挂载即跑，符合"配置与数据全部位于本仓库"。只读挂载 + 关自举是为了不让容器回写 `docs/`（否则违反"`config/` 只放模板、产物落 `data/`"）。代价：多 1 容器 / 0.05 GB，占用预留块 `.20`（后续新域从 `.21` 取） |
-| **DEC-47** | **Prometheus 抓取目标按"该栈当前部署形态"过滤**：`hosts_of` / `redis_targets` 不再返 ini 全量，而是用 `services_of <profile> <deployed_mode>`（读 `data/.mode-*`，无 marker 回退 ha）只列真会起的节点；`job_name: prometheus` 自身按本次 `MODE` 参数取 | 实测反例：consul 跑 solo 时，prometheus 仍把 consul-2/3 列为目标并长期 `down`——`count(up==0)` 不是 0 就分不清"真故障"与"根本没部署这个副本"，`tier-s`（全 solo）会造出十多个假 down。保留 DEC-23 的"新栈自动纳入"：只要该栈被起过就会按当前形态出现；代价是**改形态后要 `make render` + reload** 才同步（已写进 §14 与 stacks.md） |
+| **DEC-46** | **启用第 15 域 `.20.x` docsify**（`services/docsify/`，`docsify-1`×1，`172.28.20.11:3000`，`role=docs`、`mode=both`）：用 `rockben/docsify-server` 把仓库 `docs/` 变成可浏览站点，经 `docsify.localhost` 从宿主访问；**内容以只读嵌套挂载挂到 `/docs/content`**，站点壳（`index.html` / `assets/` / `_sidebar.md`）渲染到 `.data/site/`；`DOCSIFY_AUTO_INIT=false` 关掉镜像自举；HA 全量豁免（§5.3） | 文档体量（plan.md 1200+ 行）已不适合直读文件；docsify 无需构建、挂载即跑，符合"配置与数据全部位于本仓库"。只读挂载 + 关自举是为了不让容器回写 `docs/`（否则违反"`config/` 只放模板、产物落 `.data/`"）。代价：多 1 容器 / 0.05 GB，占用预留块 `.20`（后续新域从 `.21` 取） |
+| **DEC-47** | **Prometheus 抓取目标按"该栈当前部署形态"过滤**：`hosts_of` / `redis_targets` 不再返 ini 全量，而是用 `services_of <profile> <deployed_mode>`（读 `.data/.mode-*`，无 marker 回退 ha）只列真会起的节点；`job_name: prometheus` 自身按本次 `MODE` 参数取 | 实测反例：consul 跑 solo 时，prometheus 仍把 consul-2/3 列为目标并长期 `down`——`count(up==0)` 不是 0 就分不清"真故障"与"根本没部署这个副本"，`tier-s`（全 solo）会造出十多个假 down。保留 DEC-23 的"新栈自动纳入"：只要该栈被起过就会按当前形态出现；代价是**改形态后要 `make render` + reload** 才同步（已写进 §14 与 stacks.md） |
 | **DEC-48** | **doctor 增加第 15 项「运行态健康」**，并把"Docker daemon 重启后必须重跑 `make stack-up`（或 `make tier-*`）才能恢复集群不变量"写成正式口径（§6.3 / §8.4 / stacks.md 全局约定） | 真实事故链：daemon 重启 → `restart: unless-stopped` 只复活容器 → mysql 因为 `group_replication_start_on_boot=OFF` 停在 OFFLINE → `nacos_config` 库（成组后才建）不存在 → nacos ×3 进 crash loop（restart=50）——而 `make doctor` 当时 **14/14 PASS**。前 14 项全为静态校验，结构性看不见这一层。代价：doctor 从"全停也能绿"变成第 15 项依赖 daemon；已用 WARN（而非 FAIL）包住"未部署/没在跑"，保证没起东西时不会喷 FAIL |
 | **DEC-49** | **redis 的 `/scrape` 中继只列 6379 节点，不列 sentinel（26379）**：`redis_targets()` 跳过 `role=sentinel` | 实测：中继型 exporter 只能带一份全局 `REDIS_PASSWORD`，而 sentinel 自身不设密码（只用 `sentinel auth-pass` 连 master），带密码去连会 AUTH 失败；更坑的是 `up` 仍为 1（中继永远回 200），真正失败的是指标里的 `redis_up 0`——三个 sentinel 存活却长期报 0，与 DEC-47 要消除的假故障同一类（已用一个不带密码的临时 exporter 对照证实：同一 sentinel 目标 `redis_up 1`，加上 `REDIS_PASSWORD` 就变 0）。控制面健康本来就不靠指标：`make stack-status` 比三台 `get-master-addr-by-name` 是否一致，加 `make failover-drill`；主从切换在指标上体现为 `redis_role` 在两个 instance 间互换。代价：拿不到 sentinel 自身的 INFO 指标（想拿要先给 sentinel 设密码，已列为 D37） |
 | **DEC-50** | **`stack.sh` 的 MODE 缺省不再写死 solo，而是读 `.mode-<profile>` marker 沿用当前部署形态**（无 marker = 从没部署过才回退 solo） | 实测：`make stack-status S=mysql`（Makefile 旧默认 `MODE=solo`）在一个 **ha 部署**上走的是 solo 分支，打 `@@server_id / @@gtid_mode / @@version` 而**不是** MGR 成员表——看起来输出了东西、实际验的是另一个形态，跟 DEC-48 要消除的"绿色说谎"同类。marker 是唯一事实源（DEC-47/48 已用），`deployed_mode <profile> [fallback]` 加一个可选回退参数而不是再造一份读取逻辑。附带收益：DEC-48 的恢复口径"重跑 `make stack-up`"不带 MODE 时不会再把 ha 部署静默改成 solo。代价：`make stack-up S=<p>` 省略 MODE 的语义从"起 solo"变成"沿用当前形态"（要显式换形态必须写 `MODE=solo\|ha`），脚本每次会打印 `# MODE 未指定 -> <mode>` 以免误以为还是旧默认 |
@@ -991,7 +991,7 @@ redis_exporter: oliver006/redis_exporter:v1.67.0  # X.Y.Z：小版本会改指�
 |---|---|---|---|
 | R1 | "宿主免端口映射"依赖 OrbStack | 换 Colima/Docker Desktop → Sentinel/Cluster/Patroni/Router/Kafka 地址公告失效 | `doctor.sh` 第 7 项卡死 context；README 顶部写前提；换运行时按 §1 重新评估 |
 | R2 | 71 容器 / 14.75 GB（余量 ≈ 0.95 GB） | OOM / 宿主卡顿 | 六档纪律（§9.1）+ §9.2 限流；全量 ha 不常驻；`make size` 监控 |
-| R3 | 身份状态文件丢失 | 集群不可恢复（需重建 + 数据丢失） | 状态文件全在 `data/` → `backup-all.sh`；`stack-reset` 前强制备份 |
+| R3 | 身份状态文件丢失 | 集群不可恢复（需重建 + 数据丢失） | 状态文件全在 `.data/` → `backup-all.sh`；`stack-reset` 前强制备份 |
 | R4 | macOS bind mount 权限 | PG/Redis/MySQL/Mongo 启动失败 | `bootstrap.sh` 对齐 uid（999）；`PGDATA` 用子目录避开 lost+found |
 | R5 | 单机模拟集群 ≠ 真分布式 | 无法复现脑裂/时钟/跨机延迟 | §5.4 明确边界；多机验证另立方案（N02） |
 | R6 | JVM 默认堆 | RocketMQ/Kafka 吃满 VM | `base/jvm/heap.env` 统一注入（§9.2） |
@@ -1001,13 +1001,13 @@ redis_exporter: oliver006/redis_exporter:v1.67.0  # X.Y.Z：小版本会改指�
 | R11 | 容器命名/日志量 | 71 个容器日志炸盘 | 统一命名 `<stack>-<node>`；日志限 10m×3 |
 | R12 | `restart` 策略干扰演练 | 误判"切换成功" | `doctor.sh` 第 12 项 + §8.3 |
 | R13 | 双形态配置漂移 | solo 行为被误当集群结论 | 两形态共用同一份模板渲染；`docs/stacks.md` 标注语义差异 |
-| R14 | 两形态/两 profile 数据目录误用 | 用 solo 数据启动 ha 节点 → `nodes.conf` / MGR 元数据损坏 | `render.sh` 生成不同 `dir`；`stack-switch` 强制提示；`data/<group>/` 分层 |
+| R14 | 两形态/两 profile 数据目录误用 | 用 solo 数据启动 ha 节点 → `nodes.conf` / MGR 元数据损坏 | `render.sh` 生成不同 `dir`；`stack-switch` 强制提示；`.data/<group>/` 分层 |
 | R15 | `*.localhost` 只在宿主生效 | 容器内访问 `grafana.localhost` 失败 | 容器间一律用 IP/服务名 |
 | R16 | 观测四栈的常驻成本（0.75 / 1.30 GB） | 挤占其他栈的内存预算 | `obs(solo)` 是常驻层；`obs-ha` 仅排障时起；Prometheus 保留期与 TSDB size 上限见 §9.2 |
 | R17 | Grafana 单点 | 面板不可用（指标仍在） | 接受：无状态 + provisioning，独立栈级重建 |
 | R18 | 跨栈引用漂移 | 面板无数据 / 告警不发 / 客户端连不上 | DEC-25：引用由 `render.sh` 注入；`doctor.sh` 第 14 项校验 |
 | R19 | 观测四栈 `render.sh` 执行顺序 | Grafana 先起时短暂 `No data` | 组内固定顺序 prometheus → alertmanager → jaeger → grafana |
-| R22 | Jaeger 存储为单实例本地 Badger | 无法验证 trace 存储 HA；磁盘增长 | TTL 72h；`data/jaeger` 计入 `make size` 与备份；真 HA 列入 N09 |
+| R22 | Jaeger 存储为单实例本地 Badger | 无法验证 trace 存储 HA；磁盘增长 | TTL 72h；`.data/jaeger` 计入 `make size` 与备份；真 HA 列入 N09 |
 | R23 | trace 与指标的关联依赖数据源配置 | 面板上看不到 trace 跳转 | 数据源与 `traceToMetrics` 全走 provisioning（DEC-25），doctor 第 14 项兜底 |
 | R24 | 复合栈的作用域误伤：`reset/down` 没带 profile | 误删哨兵栈数据 / 误停集群栈 | §8.0.1 四条硬约束；`doctor.sh` 第 5 项把"无 profile 的服务"判失败 |
 | R25 | **nacos 依赖 mysql 栈**（库在 mysql Router） | mysql 域未起/切主中 → nacos 启动失败或配置读写 503 | `bootstrap.sh` 先探 `mysql-router-1:6446` 再启；`doctor.sh` 第 14 项校验该引用；F 档把两者绑定；文档标注"nacos 不能脱离 mysql 单独起" |
@@ -1024,10 +1024,10 @@ redis_exporter: oliver006/redis_exporter:v1.67.0  # X.Y.Z：小版本会改指�
 
 | 期 | 内容 | 验收 |
 |---|---|---|
-| **P0 地基** | `base/`、`stock/network.ini`（14 域花名册）、`services/nginx`（solo + ha）、`doctor.sh`、`render-all.sh`、`Makefile`、`.gitignore`、`env/` | `make doctor` 15 项全绿；`MODE=solo` 起 1 容器、`MODE=ha` 起 2 容器；容器内 `date` 显示 `CST +0800`；`grafana.localhost` 的 502 能说明路由已通（观测栈未起）；`git status` 不含 `data/`、`.env` |
+| **P0 地基** | `base/`、`stock/network.ini`（14 域花名册）、`services/nginx`（solo + ha）、`doctor.sh`、`render-all.sh`、`Makefile`、`.gitignore`、`env/` | `make doctor` 15 项全绿；`MODE=solo` 起 1 容器、`MODE=ha` 起 2 容器；容器内 `date` 显示 `CST +0800`；`grafana.localhost` 的 502 能说明路由已通（观测栈未起）；`git status` 不含 `.data/`、`.env` |
 | **P1 etcd** | 最轻的共识栈，把 bootstrap 契约打磨成型 | 3 节点 `endpoint health` 全 ok；停 1 节点仍可写；恢复后成员自动回归 |
 | **P2 pg（Patroni）** | patroni×3 + DCS×3 + haproxy×2 + exporter | `patronictl list` 1L2R；`make failover-drill S=pg` → leader 在 30s 内转移，旧主回归为 replica |
-| **P3 redis** | 复合栈两组：哨兵（1M+2R+3S）与集群（3M+3R） | 哨兵：`get-master-addr-by-name` 正确、10s 内切主；集群：`cluster_state:ok`、3M3R、16384 slots；`stack-reset S=redis-sentinel` 不影响 `data/cluster/` |
+| **P3 redis** | 复合栈两组：哨兵（1M+2R+3S）与集群（3M+3R） | 哨兵：`get-master-addr-by-name` 正确、10s 内切主；集群：`cluster_state:ok`、3M3R、16384 slots；`stack-reset S=redis-sentinel` 不影响 `.data/cluster/` |
 | **P4 consul / nats** | 与 etcd 同构，复制改参 | 3 成员 alive；nats JetStream 副本 R3 |
 | **P5 mysql MGR / mongo RS / nacos 3.x** | 3 节点 + Router×2 / RS×3 / nacos-server×3 + console×1（依赖 mysql） | MGR 3 成员 `ONLINE`，杀 primary 自动选主且 Router 跟随；`rs.status()` 1P2S 并完成一次自动选主；nacos raft 有 leader，注册一个实例在 3 个 server 都查得到，改一条配置能推送到客户端，`nacos.localhost` 控制台可登录 |
 | **P6 kafka / rabbitmq / rocketmq** | 最重，最后 | offset 三副本、`min.insync.replicas=2`；quorum queue 3 副本；DLedger 3 broker 自动切换 |
@@ -1047,7 +1047,7 @@ make render                    # ini → compose.generated.yml + 各栈配置
 make prepull [TIER=a|b|c|d|e|f] # 按 images.yml 预拉镜像（D01/D27，可选）
 make up                        # 起当前档位（默认 A）
 make down                      # 停全部（按 profile，不漏组）
-make ps / make size            # 状态 / 磁盘占用（含各栈 data/）
+make ps / make size            # 状态 / 磁盘占用（含各栈 .data/）
 make tier-s                    # solo 全栈（28 容器，≈ 5.35 GB）
 make tier-a|tier-b|tier-c|tier-d|tier-e|tier-f
 make stack-up     S=pg MODE=solo|ha
@@ -1056,7 +1056,7 @@ make stack-status S=pg
 make stack-reset  S=pg          # 整栈重建，强制备份
 make stack-shell  S=pg N=patroni-1
 make stack-host   S=pg N=patroni-1   # 宿主侧用固定 IP 直连
-make backup                    # 归档所有栈 data/ + 状态文件
+make backup                    # 归档所有栈 .data/ + 状态文件
 make failover-drill S=pg|redis-sentinel|redis-cluster|mysql|mongo|kafka|rocketmq
 make ui-open S=grafana|jaeger|rabbitmq|consul|prometheus|alertmanager|nacos|docsify
 make routes                    # 打印全部 <svc>.localhost 入口
@@ -1111,7 +1111,7 @@ docsify.localhost      | 172.28.20.11 | 3000  | subdomain-only
 
 ### 15.4 nginx 生成规则
 
-`render.sh` 为每个 `[routes]` 行生成一个 `server` 块（`services/nginx/data/conf.d/<host>.conf`，`config/` 只放模板），固定包含：
+`render.sh` 为每个 `[routes]` 行生成一个 `server` 块（`services/nginx/.data/conf.d/<host>.conf`，`config/` 只放模板），固定包含：
 
 ```nginx
 server {
@@ -1143,7 +1143,7 @@ nginx 两个实例生成**完全相同的配置**（DEC-12：双入口、无 VIP
 ## 16. 可观测性域（需求⑥⑦⑧ / DEC-20 + DEC-24 + DEC-29）
 
 > 本域**不是一个大杂烩目录**，而是 4 个组件目录共享一个 `/24`：每个观测组件在 `services/` 下拥有自己的
-> `compose.yml` / `config/` / `scripts/` / `data/`，独立 profile、独立起停、独立重置、独立切 solo/ha（§2.1）。
+> `compose.yml` / `config/` / `scripts/` / `.data/`，独立 profile、独立起停、独立重置、独立切 solo/ha（§2.1）。
 
 ### 16.1 四个组件栈
 
@@ -1262,7 +1262,7 @@ scrape_configs:
 
 **效果**：加一个栈 → `make render` → 监控自动纳入，不会出现"新栈没人监控"。
 
-**DEC-47**：目标只列**该栈当前部署形态真会起的节点**（读 `data/.mode-*`）。否则会长期出现
+**DEC-47**：目标只列**该栈当前部署形态真会起的节点**（读 `.data/.mode-*`）。否则会长期出现
 "solo 栈的副本节点永远 down"这种假故障；改形态后要 `make render && curl -X POST :9090/-/reload` 才同步。
 
 **DEC-49**：redis 的 `/scrape` 中继**不列 sentinel 口**（只列 6379）。同一取向的另一半：
@@ -1312,7 +1312,7 @@ Prometheus 是**拉模式、无共识、本地 TSDB**，不存在"主"的概念�
 | 项 | 设计 |
 |---|---|
 | 镜像 | `jaegertracing/jaeger:2.x`（v2 = OTel Collector 发行版；v1 已进入官方 EOL 路线）—— 见 D33 |
-| 存储 | **Badger**（`data/jaeger/badger`），TTL 72h；不引入 ES/Cassandra（N09） |
+| 存储 | **Badger**（`.data/jaeger/badger`），TTL 72h；不引入 ES/Cassandra（N09） |
 | 接入点 | OTLP gRPC `172.28.12.32:4317`、OTLP HTTP `172.28.12.32:4318`（应用只需配 `OTEL_EXPORTER_OTLP_ENDPOINT`） |
 | UI | `http://jaeger.localhost`（nginx 子域转发 `:16686`） |
 | 采样 | `config/sampling.json`，默认 `parentbased_ratelimited`（1 trace/s/服务）；验收时改 `always_on` |
@@ -1328,10 +1328,10 @@ Prometheus 是**拉模式、无共识、本地 TSDB**，不存在"主"的概念�
 v4.0 已把 13 个域全部纳入，v4.4 已动用预留块 `.20`（docsify）；将来加下一个域（例如 Elasticsearch、Pulsar、TiDB）时步骤固定：
 
 1. `stock/network.ini` 取一个预留块（`.21–.29`），加 `[stack.<name>]`，每行写 `role` 与 `mode`。
-2. `services/<name>/`：照 §8 契约建 `compose.yml` + `config/` + `scripts/` + `data/`。
+2. `services/<name>/`：照 §8 契约建 `compose.yml` + `config/` + `scripts/` + `.data/`。
    仅当满足 §2.1 的四条"复合栈"条件时，才允许与已有栈同目录。
 3. `bash scripts/render-all.sh`：`compose.generated.yml` 自动 include；`prometheus.yml` 自动纳入（`role=exporter` 或原生指标表）。
 4. 若要 UI：`[routes]` 加一行，nginx 配置自动生成。
-5. `doctor.sh` 无需改 —— 第 1–5/11/13/14 项按 ini 通用校验（法定人数、IP 一致性、双形态、路由/引用）会自动覆盖；第 15 项按 `data/.mode-<profile>` marker 自动把新栈的运行态纳入校验，`prometheus` 目标也按 marker 自动只列真会起的节点（DEC-47）。
+5. `doctor.sh` 无需改 —— 第 1–5/11/13/14 项按 ini 通用校验（法定人数、IP 一致性、双形态、路由/引用）会自动覆盖；第 15 项按 `.data/.mode-<profile>` marker 自动把新栈的运行态纳入校验，`prometheus` 目标也按 marker 自动只列真会起的节点（DEC-47）。
 
 > 追加哪一个，就同时补 `docs/stacks.md` 的对应章节；不要"只起容器不写验证口径"。

@@ -6,7 +6,7 @@ services:
     container_name: mongo-1
     command: ["mongod", "--config", "/data/active/mongo-1/mongod.conf"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD-SHELL", "mongosh --quiet --eval 'db.runCommand({ping:1}).ok' | grep -q 1"]
 
@@ -16,7 +16,7 @@ services:
     container_name: mongo-2
     command: ["mongod", "--config", "/data/active/mongo-2/mongod.conf"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD-SHELL", "mongosh --quiet --eval 'db.runCommand({ping:1}).ok' | grep -q 1"]
 
@@ -26,7 +26,7 @@ services:
     container_name: mongo-3
     command: ["mongod", "--config", "/data/active/mongo-3/mongod.conf"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD-SHELL", "mongosh --quiet --eval 'db.runCommand({ping:1}).ok' | grep -q 1"]
 
@@ -35,4 +35,4 @@ services:
     profiles: ["mongo"]
     container_name: mongo-exporter
     command: ["--collect-all"]
-    env_file: ["./data/active/mongo-exporter.env"]
+    env_file: ["./.data/active/mongo-exporter.env"]

@@ -5,9 +5,9 @@ services:
     profiles: ["mysql"]
     container_name: mysql-1
     command: ["mysqld", "--defaults-file=/data/active/mysql-1/my.cnf"]
-    env_file: ["./data/active/mysql-1.env"]
+    env_file: ["./.data/active/mysql-1.env"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
 
@@ -16,9 +16,9 @@ services:
     profiles: ["mysql"]
     container_name: mysql-2
     command: ["mysqld", "--defaults-file=/data/active/mysql-2/my.cnf"]
-    env_file: ["./data/active/mysql-2.env"]
+    env_file: ["./.data/active/mysql-2.env"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
 
@@ -27,9 +27,9 @@ services:
     profiles: ["mysql"]
     container_name: mysql-3
     command: ["mysqld", "--defaults-file=/data/active/mysql-3/my.cnf"]
-    env_file: ["./data/active/mysql-3.env"]
+    env_file: ["./.data/active/mysql-3.env"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
 
@@ -39,7 +39,7 @@ services:
     container_name: mysql-router-1
     entrypoint: ["/bin/bash", "/data/active/mysql-router-1/entry.sh"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6446' || exit 1"]
 
@@ -49,7 +49,7 @@ services:
     container_name: mysql-router-2
     entrypoint: ["/bin/bash", "/data/active/mysql-router-2/entry.sh"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6446' || exit 1"]
 
@@ -59,4 +59,4 @@ services:
     container_name: mysql-exporter
     command: ["--config.my-cnf=/data/active/mysql-exporter.my.cnf"]
     volumes:
-      - ./data:/data
+      - ./.data:/data

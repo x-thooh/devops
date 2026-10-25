@@ -6,7 +6,7 @@ STACK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${STACK_DIR}/../../scripts/lib.sh"
 
 MODE="${1:-solo}"
-ACTIVE="${STACK_DIR}/data/active"
+ACTIVE="${STACK_DIR}/.data/active"
 ensure_dir "${ACTIVE}"
 
 # shellcheck disable=SC1091
@@ -107,9 +107,9 @@ for row in $(rows_of mysql); do
     [[ "${role}" == "proxy" ]] || continue
     rid=$((rid + 1))
     ensure_dir "${ACTIVE}/${name}"
-    ensure_dir "${STACK_DIR}/data/${name}"
+    ensure_dir "${STACK_DIR}/.data/${name}"
     # 镜像以 uid 999 运行 mysqlrouter，bind mount 需可写
-    chmod 0777 "${STACK_DIR}/data/${name}"
+    chmod 0777 "${STACK_DIR}/.data/${name}"
 
     # 元数据未就绪时的兜底：能启动、能过健康检查，bootstrap.sh 就绪后会重启切回 metadata 路由
     cat >"${ACTIVE}/${name}/fallback.conf" <<EOF

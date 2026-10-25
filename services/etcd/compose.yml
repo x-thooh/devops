@@ -7,7 +7,7 @@ services:
     container_name: etcd-1
     command: ["etcd", "--config-file=/data/active/etcd-1/etcd.yml"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD", "etcdctl", "endpoint", "health"]
 
@@ -17,7 +17,7 @@ services:
     container_name: etcd-2
     command: ["etcd", "--config-file=/data/active/etcd-2/etcd.yml"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD", "etcdctl", "endpoint", "health"]
 
@@ -27,6 +27,6 @@ services:
     container_name: etcd-3
     command: ["etcd", "--config-file=/data/active/etcd-3/etcd.yml"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD", "etcdctl", "endpoint", "health"]

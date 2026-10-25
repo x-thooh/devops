@@ -7,7 +7,7 @@ services:
     container_name: consul-1
     command: ["agent", "-config-dir=/data/active/consul-1"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD", "consul", "info"]
 
@@ -17,7 +17,7 @@ services:
     container_name: consul-2
     command: ["agent", "-config-dir=/data/active/consul-2"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD", "consul", "info"]
 
@@ -27,6 +27,6 @@ services:
     container_name: consul-3
     command: ["agent", "-config-dir=/data/active/consul-3"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD", "consul", "info"]

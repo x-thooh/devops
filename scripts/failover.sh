@@ -24,7 +24,7 @@ die() {
 
 dir="$(python3 scripts/ini.py dir "${PROFILE}")" || die "未知 profile：${PROFILE}"
 stack_dir="${ROOT}/services/${dir}"
-marker="${stack_dir}/data/.mode-${PROFILE}"
+marker="${stack_dir}/.data/.mode-${PROFILE}"
 if [[ -f "${marker}" && "$(cat "${marker}")" != "ha" ]]; then
     die "${PROFILE} 当前不是 ha 形态（$(cat "${marker}")）；演练只对集群形态有意义"
 fi

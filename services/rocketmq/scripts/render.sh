@@ -7,7 +7,7 @@ STACK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${STACK_DIR}/../../scripts/lib.sh"
 
 MODE="${1:-solo}"
-ACTIVE="${STACK_DIR}/data/active"
+ACTIVE="${STACK_DIR}/.data/active"
 ensure_dir "${ACTIVE}"
 
 namesrv=""

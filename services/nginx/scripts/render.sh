@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 从 stock/network.ini 的 [routes] 生成 nginx server 块。
-# 产物：services/nginx/data/conf.d/<host>.conf（config/ 只放模板）
+# 产物：services/nginx/.data/conf.d/<host>.conf（config/ 只放模板）
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -8,7 +8,7 @@ STACK_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ROOT="$(cd "${STACK_DIR}/../.." && pwd)"
 cd "${ROOT}"
 
-CONF_DIR="${STACK_DIR}/data/conf.d"
+CONF_DIR="${STACK_DIR}/.data/conf.d"
 mkdir -p "${CONF_DIR}"
 rm -f "${CONF_DIR}"/*.conf
 

@@ -7,6 +7,6 @@ STACK_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ROOT="$(cd "${STACK_DIR}/../.." && pwd)"
 cd "${ROOT}"
 
-rm -f "${STACK_DIR}/data/conf.d"/*.conf
+rm -f "${STACK_DIR}/.data/conf.d"/*.conf
 "${SCRIPT_DIR}/render.sh"
 echo "nginx reset: generated route config cleared; run stack-up to restart"

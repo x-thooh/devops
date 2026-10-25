@@ -24,7 +24,7 @@ usage: scripts/stack.sh <action> <profile> [solo|ha] [node]
   stop     docker compose stop（演练用，不触发 restart）
   rm       docker compose rm -sf（只删本 profile 的容器）
   status   容器状态 + 栈自带 status.sh
-  reset    停容器 → 删本 profile 的 data 子树 → 重新 render → 重启
+  reset    停容器 → 删本 profile 的 .data 子树 → 重新 render → 重启
   shell    exec 进节点（默认第一个 service）
   logs     docker compose logs -f
 
@@ -60,7 +60,7 @@ fi
 #（plan §8.0：新栈先证"能跑"，再证"集群成立"）。
 if [[ -z "${mode}" ]]; then
     mode="$(deployed_mode "${profile}" solo)"
-    echo "# MODE 未指定 -> ${mode}（来自 services/${dir}/data/.mode-${profile}）"
+    echo "# MODE 未指定 -> ${mode}（来自 services/${dir}/.data/.mode-${profile}）"
 fi
 
 case "${mode}" in
@@ -83,7 +83,7 @@ while IFS= read -r name; do
 done < <(python3 scripts/ini.py services "${profile}" ha 2>/dev/null || true)
 
 mode_marker_path() {
-    echo "${stack_dir}/data/.mode-${profile}"
+    echo "${stack_dir}/.data/.mode-${profile}"
 }
 
 # 形态 marker 必须先写：render-all.sh 按 marker 决定每个栈的渲染形态
@@ -118,9 +118,9 @@ bootstrap() {
 
 data_root() {
     if [[ "${dir}" == "redis" ]]; then
-        echo "${ROOT}/services/redis/data/${profile#redis-}"
+        echo "${ROOT}/services/redis/.data/${profile#redis-}"
     else
-        echo "${ROOT}/services/${dir}/data"
+        echo "${ROOT}/services/${dir}/.data"
     fi
 }
 
@@ -193,7 +193,7 @@ case "${action}" in
         else
             data="$(data_root)"
             case "${data}" in
-                "${ROOT}/services/"*/data*) ;;
+                "${ROOT}/services/"*/.data*) ;;
                 *) die "拒绝删除可疑路径：${data}" ;;
             esac
             echo "clearing data=${data#"${ROOT}/"}"

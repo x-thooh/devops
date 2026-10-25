@@ -25,7 +25,7 @@ services:
     environment:
       JAVA_OPT_EXT: "-Xms512m -Xmx512m -Xmn256m"
     volumes:
-      - ./data:/data
+      - ./.data:/data
 
   rmq-broker-2:
     x-image: rocketmq
@@ -35,7 +35,7 @@ services:
     environment:
       JAVA_OPT_EXT: "-Xms512m -Xmx512m -Xmn256m"
     volumes:
-      - ./data:/data
+      - ./.data:/data
 
   rmq-broker-3:
     x-image: rocketmq
@@ -45,10 +45,10 @@ services:
     environment:
       JAVA_OPT_EXT: "-Xms512m -Xmx512m -Xmn256m"
     volumes:
-      - ./data:/data
+      - ./.data:/data
 
   rmq-exporter:
     x-image: rocketmq_exporter
     profiles: ["rocketmq"]
     container_name: rmq-exporter
-    env_file: ./data/active/rmq-exporter.env
+    env_file: ./.data/active/rmq-exporter.env

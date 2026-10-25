@@ -3,7 +3,7 @@
 
 范围约定：第 4/5/10/11/13/14/15 项按“已启用的栈”取集合——只检查
 `services/<dir>/compose.yml` 已存在的目录；未开工的栈不参与判定。
-第 15 项额外按“已部署的 profile”取集合（读 `data/.mode-*` marker）。
+第 15 项额外按“已部署的 profile”取集合（读 `.data/.mode-*` marker）。
 """
 from __future__ import annotations
 
@@ -358,14 +358,14 @@ def check_9_env() -> tuple[str, str]:
 def check_10_data() -> tuple[str, str]:
     notes: list[str] = []
     for directory in enabled_dirs():
-        data = directory / "data"
+        data = directory / ".data"
         if not data.exists():
-            notes.append(f"services/{directory.name}/data 不存在（make render 会创建）")
+            notes.append(f"services/{directory.name}/.data 不存在（make render 会创建）")
         elif not os.access(data, os.W_OK):
-            notes.append(f"services/{directory.name}/data 不可写")
+            notes.append(f"services/{directory.name}/.data 不可写")
     if notes:
         return "WARN", "; ".join(notes)
-    return "PASS", f"{len(enabled_dirs())} 个已启用目录的 data/ 可写"
+    return "PASS", f"{len(enabled_dirs())} 个已启用目录的 .data/ 可写"
 
 
 def check_11_topology(stacks: dict[str, list[Row]], profiles: list[str]) -> tuple[str, str]:
@@ -498,8 +498,8 @@ def check_14_routes(stacks: dict[str, list[Row]], profiles: list[str]) -> tuple[
 
 
 def deployed_mode(profile: str) -> str:
-    """该 profile 当前部署形态（读 stack.sh 写的 data/.mode-<profile>）；没 marker = 从未部署。"""
-    for marker in sorted((ROOT / "services").glob(f"*/data/.mode-{profile}")):
+    """该 profile 当前部署形态（读 stack.sh 写的 .data/.mode-<profile>）；没 marker = 从未部署。"""
+    for marker in sorted((ROOT / "services").glob(f"*/.data/.mode-{profile}")):
         return marker.read_text(encoding="utf-8").strip()
     return ""
 

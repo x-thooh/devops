@@ -30,7 +30,7 @@
 | F02 | 块号 = 域号，14 块全部启用（`.0.x` edge … `.13.x` nacos、`.12.x` obs） | plan §3.2 |
 | F03 | 块内尾号约定（`.11–19` 核心 / `.21–29` 副本与哨兵 / `.31–39` 代理、DCS、前端 / `.41–49` exporter / `.51–59` 客户端） | plan §3.3 |
 | F04 | 目录按组件内聚，不变量集中 `base/` | plan §2 |
-| F05 | 数据放各组件 `data/`，`**/data/` 一条 gitignore | plan §4 |
+| F05 | 数据放各组件 `.data/`，`**/.data/` 一条 gitignore | plan §4 |
 | F06 | **仅 `[stack.nginx]` 发布宿主端口**（宿主可直连容器 IP，已实测） | plan DEC-3 |
 | F07 | `stock/network.ini` 单一事实源，compose 由脚本生成 | plan DEC-4 |
 | F08 | 每栈双形态 solo / ha，profile 切换 | plan DEC-18 |
@@ -39,11 +39,11 @@
 | F11 | RocketMQ 用 DLedger 3 broker；MySQL 用 MGR + Router（MinIO 已于 v4.2 删除，见 F22） | plan DEC-8/14 |
 | F12 | observability 域（`.12.x`）内按组件拆 4 栈：prometheus / alertmanager / grafana / jaeger | plan DEC-20/24/29 |
 | F13 | UI 统一经 `<svc>.localhost` 子域，路由表进 ini `[routes]` | plan DEC-21/22 |
-| F14 | 可观测性四栈各自带 compose/config/scripts/data | plan §16.1 |
+| F14 | 可观测性四栈各自带 compose/config/scripts/.data | plan §16.1 |
 | F15 | 三层模型：域（15）/ 目录（17）/ 部署单元（18）/ 容器（28→71） | plan §2.1 |
 | F16 | 块号与 `[stack.*]` 命名不随范围调整删除 | plan DEC-28 |
 | F17 | `services/jaeger/`（`.12.32`）：OTLP + Badger + UI；不伪装双实例 HA | plan DEC-29/30 / §16.5 |
-| F18 | `redis` 复合栈（一目录两组互斥 profile；数据分 `data/sentinel/`、`data/cluster/`） | plan DEC-31/32 / §8.0.1 |
+| F18 | `redis` 复合栈（一目录两组互斥 profile；数据分 `.data/sentinel/`、`.data/cluster/`） | plan DEC-31/32 / §8.0.1 |
 | F19 | 原 `core/` 拆为 `nginx` / `mailpit` / `adminer` / `minio`（v4.2 后仅剩 nginx，见 F22） | plan DEC-33/38 |
 | F20 | **v4.0 恢复 13 域全量**（撤销 v3.0 缩容），目录规则统一 | plan DEC-34 |
 | **F21** | **新增 `services/nacos/`（第 14 域 `.13.x`，3 节点）**：配置库复用 mysql 栈（`:6446/nacos_config`）；控制台经 nginx，gRPC 直连节点 | plan DEC-36/37 |
@@ -55,7 +55,7 @@
 | **F27** | **`TZ=Asia/Shanghai`**（只在 `base/anchors.yml` 出现），MySQL/Mongo `utf8mb4` | plan DEC-43 / D08 |
 | **F28** | **RabbitMQ 端口含 Erlang 分发段 `35672-35682`**（与 v2.3 一致；doctor 第 3 项按区间校验） | plan §5.1 / §6.2 / Q10 |
 | **F29** | **Nacos 升 3.x**：`nacos-server`×3 + `nacos-console`×1（8080，无状态），3.x schema；P5 锁定四项待确认 | plan DEC-44 / D35 / R28 |
-| **F30** | **启用第 15 域 `.20.x` docsify**（§17 预留块首个）：仓库 `docs/` 只读挂到 `/docs/content`，站点壳渲染到 `data/site/`，`DOCSIFY_AUTO_INIT=false`；无状态纯浏览，HA 全量豁免 | plan DEC-46 / §5.3 |
+| **F30** | **启用第 15 域 `.20.x` docsify**（§17 预留块首个）：仓库 `docs/` 只读挂到 `/docs/content`，站点壳渲染到 `.data/site/`，`DOCSIFY_AUTO_INIT=false`；无状态纯浏览，HA 全量豁免 | plan DEC-46 / §5.3 |
 | **F31** | **Prometheus 抓取目标按"该栈当前部署形态"过滤**（读 `.mode-<profile>` marker）：未部署的副本不再长期报 `down`，`down` 只表示"该起而没起" | plan DEC-47 / §16.2 |
 | **F32** | **`doctor` 增加第 15 项「运行态健康」**；并把"Docker daemon 重启后必须重跑 `make stack-up` 才能恢复集群不变量"写成正式口径（不把 `group_replication_start_on_boot` 改成 `ON`） | plan DEC-48 / §6.3 / §8.4 / R29 |
 | **F33** | **redis 的 `/scrape` 中继只列 6379 节点，不列 sentinel（26379）**：中继只有一份共享 `REDIS_PASSWORD`，而 sentinel 自身不设密码（只靠 `auth-pass` 连 master），带密码去连必 AUTH 失败 → `redis_up` 恒 0 而 `up` 仍为 1，又是一个无法与真故障区分的假信号 | plan DEC-49 / §16.2 |
@@ -323,7 +323,7 @@ v4.2 删除 minio（DEC-38，无消费者）。若将来需要对象存储（应
 | C | 开鉴权 + 每栈一个命名空间（edge / pg / kafka …） |
 
 **推荐**：**A**（顺带验证「token 不一致 → 节点互踢」这个真实坑，成本几乎为零）
-**影响**：客户端需带 `username/password`；token 存 `.env`（不入 `data/` 备份）；console 登录依赖 admin 初始化
+**影响**：客户端需带 `username/password`；token 存 `.env`（不入 `.data/` 备份）；console 登录依赖 admin 初始化
 **阻塞**：P5（与 R28 的四项一起确认）
 
 ---
@@ -369,7 +369,7 @@ v4.2 删除 minio（DEC-38，无消费者）。若将来需要对象存储（应
 | 项 | 选项 | 推荐 |
 |---|---|---|
 | 形式 | (a) tar 冷备（停栈） (b) 逻辑导出 + 状态文件 | **(b)** |
-| 存放 | `data/backups/`（仓库内，gitignore）/ 仓库外 | **仓库内** |
+| 存放 | `.data/backups/`（仓库内，gitignore）/ 仓库外 | **仓库内** |
 | 保留 | 最近 5 份 / 按日期 | 最近 5 份 |
 | 异地 | restic → 外部 / 不要 | P7 后再议 |
 
@@ -387,8 +387,8 @@ v4.2 删除 minio（DEC-38，无消费者）。若将来需要对象存储（应
 
 | 选项 | 说明 |
 |---|---|
-| A | 各栈 `data/<node>/logs/` + json-file 限流 |
-| B | A + 统一到 `data/_logs/` 软链，便于 `make logs-all` |
+| A | 各栈 `.data/<node>/logs/` + json-file 限流 |
+| B | A + 统一到 `.data/_logs/` 软链，便于 `make logs-all` |
 | C | A + Loki（+2 容器 / +0.3 GB） |
 
 **推荐**：**B**（13 域 71 容器下，`make logs-all` 已成刚需）
@@ -439,7 +439,7 @@ v4.2 删除 minio（DEC-38，无消费者）。若将来需要对象存储（应
 - RDB：保留默认 `save` 策略 → `backup-all.sh` 可在不停栈的情况下 `BGSAVE` 导出（D24）；
 - 两者同时存在时，**重启优先加载 AOF**（这是预期行为，`docs/stacks.md` 要写明）。
 
-**影响**：`data/<group>/<node>/appendonlydir` 与 `dump.rdb` 都会出现在 `data/`，备份体积略增
+**影响**：`.data/<group>/<node>/appendonlydir` 与 `dump.rdb` 都会出现在 `.data/`，备份体积略增
 **阻塞**：无（P3 按此渲染 `redis-base.conf`）
 
 ### D32 Redis 内存档位与淘汰策略
@@ -526,7 +526,7 @@ P0 的 8 项决策全部落定，可以直接进入 `plan §13` 的 P0 实施：
 
 **P0 交付物**（plan §13）：`base/`（network / anchors / images / jvm）、`stock/network.ini`（14 域花名册）、`services/nginx`、`doctor.sh`、`render-all.sh`、`Makefile`、`.gitignore`、`env/`。
 
-**P0 验收**：`make doctor` 15 项全绿（按"已启用的栈"取集合）；`MODE=solo` 起 1 容器、`MODE=ha` 起 2 容器；容器内 `date` 显示 `CST +0800`；`git status` 不含 `data/`、`.env`。
+**P0 验收**：`make doctor` 15 项全绿（按"已启用的栈"取集合）；`MODE=solo` 起 1 容器、`MODE=ha` 起 2 容器；容器内 `date` 显示 `CST +0800`；`git status` 不含 `.data/`、`.env`。
 
 **其余待答（都不阻塞 P0）**：D09–D19（各栈版本/形态，按推荐落地）、D21–D34（方案缺口；D20 已定，仅剩子项）、D36（Nacos 鉴权，P5 与 R28 一起确认）、D37（sentinel 是否设密码以进指标，P3 语境）。
 
@@ -543,7 +543,7 @@ P0 的 8 项决策全部落定，可以直接进入 `plan §13` 的 P0 实施：
 | 非 root 绑定 80 | `docker run -p 80:80` | ✅ 通 |
 | `include` glob | `include: services/*/compose.yml` | ❌ 不支持 |
 | `include` + profiles | `--profile x config --services` | ✅ 透传 |
-| 组件内相对路径基准 | `./data` 解析 | ✅ 相对组件目录 |
+| 组件内相对路径基准 | `./.data` 解析 | ✅ 相对组件目录 |
 | 冷拉 alpine:3.20 | `docker pull` | 26.7 s |
 | 冷拉 redis:7.4-alpine | `docker pull` | 62.8 s |
 | 热拉（已缓存） | `docker pull` | 3.3 s |

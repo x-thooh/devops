@@ -34,13 +34,13 @@
 | `base/jvm/heap.env` | JVM 限堆 | kafka / rocketmq 引用 |
 | `services/<stack>/compose.yml` | **手写骨架**（输入，入库） | 只写 `services` / `container_name` / `profiles` / `volumes` / `healthcheck` / `x-image`；禁止 `image` / `restart` / `logging` / `networks` / `TZ` |
 | `services/<stack>/config/` | 配置**模板**（入库） | 只放模板，`render.sh` 产物不许写进来 |
-| `services/<stack>/data/` | 运行时状态（gitignore） | 永不入库；`**/data/**` 一条规则覆盖 |
+| `services/<stack>/.data/` | 运行时状态（gitignore） | 永不入库；`**/.data/` 一条规则覆盖 |
 | `.venv/` | 仓库内 Python 环境（生成物） | `make setup` 重建；依赖**不得**装进宿主解释器（DEC-51） |
 | `.generated/<stack>.yml` | 单栈渲染结果（生成物） | 不提交；`render-all.py` 每次覆盖 |
 | `compose.yml`、`compose.generated.yml` | 根聚合入口（生成物，两份同内容） | 手改无效，`render-all.sh` 会覆盖；不提交 |
-| `services/nginx/data/conf.d/`、`*/data/**/prometheus.yml`、`sentinel.conf`、`nodes.conf` | 渲染产物 / 运行时重写 | 手改会被下一次 render 或重启冲掉 |
+| `services/nginx/.data/conf.d/`、`*/.data/**/prometheus.yml`、`sentinel.conf`、`nodes.conf` | 渲染产物 / 运行时重写 | 手改会被下一次 render 或重启冲掉 |
 
-> **一句话**：`ini`、`base/`、`mise.toml`、`services/*/compose.yml` 与 `config/` 是输入；`.generated/`、根 `compose*.yml`、`.venv/` 与 `data/` 是输出。只改输入。
+> **一句话**：`ini`、`base/`、`mise.toml`、`services/*/compose.yml` 与 `config/` 是输入；`.generated/`、根 `compose*.yml`、`.venv/` 与 `.data/` 是输出。只改输入。
 
 ---
 
@@ -65,7 +65,7 @@
 1. **不变量不下沉**：`subnet` / `gateway` / `logging` / `restart` / `TZ` / 字面量 `image:` 只允许出现在 `base/`。
 2. **端口按"同一 IP 内不重复"校验**：不按宿主端口，因为除 nginx 外不发布。
 3. **一个 service 必须带 profile**：否则任何 `up` 都会起它，破坏 redis 复合栈互斥（doctor 第 5 项判失败）。
-4. **`config/` 只放模板**：运行时重写或含渲染 IP 的文件必须落 `data/`（DEC-11）。
+4. **`config/` 只放模板**：运行时重写或含渲染 IP 的文件必须落 `.data/`（DEC-11）。
 5. **宿主端口只有 `[stack.nginx]` 的 `nginx-1`**；其它 UI 一律经 `<svc>.localhost`（DEC-3 / DEC-42）。
 6. **不改 `docs/archive/`**；不在容器内用 `.localhost`（R15）。
 7. **演练只用 `docker compose stop`**，禁止 `docker kill`（DEC-17 / R12）。
@@ -86,7 +86,7 @@ make up / make down         # 起停当前档位（默认 A）
 make tier-s | tier-a..f     # 档位：solo 全栈 / 数据库 / 消息 / 重栈 / 组合 / 共识 / 注册配置
 make stack-up     S=<profile> MODE=solo|ha
 make stack-status S=<profile>
-make stack-reset  S=<profile>   # 只清本 profile 的 data/ 子树
+make stack-reset  S=<profile>   # 只清本 profile 的 .data/ 子树
 make stack-shell  S=<profile> N=<node>
 make failover-drill S=pg|redis-sentinel|redis-cluster|mysql|mongo|kafka|rocketmq
 make ui-open S=grafana|jaeger|rabbitmq|consul|prometheus|alertmanager|nacos|docsify
@@ -104,7 +104,7 @@ make trace-demo             # 推一条 OTLP trace 给 jaeger
 
 ```text
 1. 改输入       stock/network.ini（IP/端口/mode）或 services/<stack>/config/*.tpl
-2. make render  生成 compose + 各栈真实配置（产物都进 data/）
+2. make render  生成 compose + 各栈真实配置（产物都进 .data/）
 3. make stack-up S=<profile> MODE=solo   ← 先 solo 证"能跑"（省略 MODE 会沿用当前形态，DEC-50）
 4. make stack-up S=<profile> MODE=ha     ← 再 ha 证"集群成立"，跑 failover-drill
 5. make doctor  15 项；失败项按提示修，不要靠手工改生成物绕过
@@ -132,13 +132,13 @@ make trace-demo             # 推一条 OTLP trace 给 jaeger
 | ❌ 不要 | 原因 |
 |---|---|
 | 在 compose 里写 IP、镜像、`subnet`、`logging` | 与 ini / base 双份事实源，必漂移 |
-| 手改 `compose.generated.yml`、`data/` 下的 rendered 配置 | 下次 render / 重启即失效 |
+| 手改 `compose.generated.yml`、`.data/` 下的 rendered 配置 | 下次 render / 重启即失效 |
 | 猜镜像版本或端口 | 版本形态见 DEC-40；端口见 §6.2；不确定就写进 `pending-decisions` |
 | 新增组件却不加 ini 行 / 不加 profile / 不写 bootstrap 探测 | `doctor` 第 4/5/11 项会失败，且 `backup-all` 漏数据 |
 | 用 `docker kill` 做演练、或让 `restart:` 复活容器 | 会误判"切换成功" |
 | 在容器之间用 `*.localhost` | 只有宿主浏览器能解析 |
 | 静默改变已定案（D01/D02/D03/D08/D31 等） | 先改 ADR + pending，再改实现 |
-| 把 `data/`、`.env`、生成物提交进 git | `.gitignore` 已覆盖，提交前 `git status` 自查 |
+| 把 `.data/`、`.env`、生成物提交进 git | `.gitignore` 已覆盖，提交前 `git status` 自查 |
 | 把 Python 依赖装进宿主解释器（`pip install --break-system-packages` 等） | 宿主同时有 uv / mise / /usr/bin 三个 `python3`，不同 shell 会选不中同一个；依赖只进 `.venv`（`make setup`，DEC-51） |
 | 把 `bootstrap` 排在 `compose up -d --wait` 之后 | 需要先引导才转健康的栈会死锁（实测 mysql：Router 等 MGR 有主，`--wait` 超时又挡住 bootstrap）；`up`/`reset` 均为两段式（DEC-52） |
 

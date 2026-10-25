@@ -6,9 +6,9 @@ services:
     profiles: ["rabbitmq"]
     container_name: rabbit-1
     hostname: rabbit-1
-    env_file: ./data/active/rabbit-1.env
+    env_file: ./.data/active/rabbit-1.env
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
 
@@ -17,9 +17,9 @@ services:
     profiles: ["rabbitmq"]
     container_name: rabbit-2
     hostname: rabbit-2
-    env_file: ./data/active/rabbit-2.env
+    env_file: ./.data/active/rabbit-2.env
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
 
@@ -28,8 +28,8 @@ services:
     profiles: ["rabbitmq"]
     container_name: rabbit-3
     hostname: rabbit-3
-    env_file: ./data/active/rabbit-3.env
+    env_file: ./.data/active/rabbit-3.env
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]

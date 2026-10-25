@@ -23,7 +23,7 @@ for compose in services/*/compose.yml; do
         # 同一目录多 profile（redis）取最近一次起栈的形态。
         mode=""
         newest=0
-        for marker in "${dir}"/data/.mode-*; do
+        for marker in "${dir}"/.data/.mode-*; do
             [[ -f "${marker}" ]] || continue
             ts="$(mtime "${marker}")"
             if [[ "${ts}" -gt "${newest}" ]]; then

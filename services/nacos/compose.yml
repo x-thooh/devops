@@ -6,10 +6,10 @@ services:
     x-image: nacos
     profiles: ["nacos"]
     container_name: nacos-server-1
-    env_file: ./data/active/nacos-server-1.env
+    env_file: ./.data/active/nacos-server-1.env
     volumes:
-      - ./data:/data
-      - ./data/nacos-server-1/logs:/home/nacos/logs
+      - ./.data:/data
+      - ./.data/nacos-server-1/logs:/home/nacos/logs
     healthcheck:
       # 3.x 禁用了 v1 console health API；actuator 是唯一免鉴权的严格探针（-f 让 404/5xx 判失败）
       test: ["CMD-SHELL", "curl -sf -o /dev/null http://127.0.0.1:8848/nacos/actuator/prometheus"]
@@ -21,10 +21,10 @@ services:
     x-image: nacos
     profiles: ["nacos"]
     container_name: nacos-server-2
-    env_file: ./data/active/nacos-server-2.env
+    env_file: ./.data/active/nacos-server-2.env
     volumes:
-      - ./data:/data
-      - ./data/nacos-server-2/logs:/home/nacos/logs
+      - ./.data:/data
+      - ./.data/nacos-server-2/logs:/home/nacos/logs
     healthcheck:
       # 3.x 禁用了 v1 console health API；actuator 是唯一免鉴权的严格探针（-f 让 404/5xx 判失败）
       test: ["CMD-SHELL", "curl -sf -o /dev/null http://127.0.0.1:8848/nacos/actuator/prometheus"]
@@ -36,10 +36,10 @@ services:
     x-image: nacos
     profiles: ["nacos"]
     container_name: nacos-server-3
-    env_file: ./data/active/nacos-server-3.env
+    env_file: ./.data/active/nacos-server-3.env
     volumes:
-      - ./data:/data
-      - ./data/nacos-server-3/logs:/home/nacos/logs
+      - ./.data:/data
+      - ./.data/nacos-server-3/logs:/home/nacos/logs
     healthcheck:
       # 3.x 禁用了 v1 console health API；actuator 是唯一免鉴权的严格探针（-f 让 404/5xx 判失败）
       test: ["CMD-SHELL", "curl -sf -o /dev/null http://127.0.0.1:8848/nacos/actuator/prometheus"]
@@ -51,9 +51,9 @@ services:
     x-image: nacos
     profiles: ["nacos"]
     container_name: nacos-console
-    env_file: ./data/active/nacos-console.env
+    env_file: ./.data/active/nacos-console.env
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/ >/dev/null"]
       interval: 10s

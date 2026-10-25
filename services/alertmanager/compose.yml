@@ -7,6 +7,6 @@ services:
     container_name: alertmanager
     entrypoint: ["/bin/sh", "/data/active/alertmanager/entry.sh"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9093/-/ready >/dev/null"]

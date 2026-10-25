@@ -12,7 +12,7 @@
 | `solo` | `nginx-1`（`172.28.0.11`） | `ENTRY_HTTP_PORT`（默认 80） | 唯一入口 |
 | `ha` | `nginx-1` + `nginx-2`（`172.28.0.12`） | 仅 `nginx-1` 发布 | 双入口，无 VIP；`nginx-2` 只供直连验证 |
 
-两实例共用 `services/nginx/config/nginx.conf` 与 `services/nginx/data/conf.d/`；
+两实例共用 `services/nginx/config/nginx.conf` 与 `services/nginx/.data/conf.d/`；
 `[routes]` 的每个 host 生成一个 server 块，upstream 指向 ini 中的固定 IP。
 
 ### 输入
@@ -23,7 +23,7 @@
 | `stock/network.ini` 的 `[routes]` | `host \| upstream_ip \| port \| capability` |
 | `services/nginx/compose.yml` | 手写骨架（`x-image: nginx` + profile + 挂载 + 健康检查） |
 | `services/nginx/config/nginx.conf` | 默认站点 `/healthz`、WebSocket map、`include conf.d/*.conf` |
-| `services/nginx/scripts/render.sh` | 生成 `data/conf.d/<host>.conf` |
+| `services/nginx/scripts/render.sh` | 生成 `.data/conf.d/<host>.conf` |
 
 ### 起停
 
@@ -60,7 +60,7 @@ curl -s http://172.28.0.12/healthz                # ok
 
 - `solo` 只复用 `nginx-1`（`.11`）；`nginx-2` 不启动，`172.28.0.12` 不可达。
 - `ha` 才启动 `nginx-2`；两者无 VIP，宿主入口只指向 `nginx-1`，`nginx-2` 用直连 IP 验证。
-- 两者共用同一份 `data/conf.d/`（无状态，不存在数据隔离问题）。
+- 两者共用同一份 `.data/conf.d/`（无状态，不存在数据隔离问题）。
 
 ### 重置
 
@@ -68,7 +68,7 @@ curl -s http://172.28.0.12/healthz                # ok
 make stack-reset S=nginx MODE=solo
 ```
 
-顺序：删容器 → 清 `services/nginx/data/conf.d/*.conf` → `render.sh` 重建路由 →
+顺序：删容器 → 清 `services/nginx/.data/conf.d/*.conf` → `render.sh` 重建路由 →
 重新 `up`。`config/nginx.conf` 是入库模板，不会被删。
 
 ### 坑
@@ -82,7 +82,7 @@ make stack-reset S=nginx MODE=solo
 | `nginx-2` 直连 000 | `MODE=solo` 或容器未起；切 `MODE=ha` 后再试 |
 | `make doctor` 第 8 项失败 | VPN / 其它网桥占用了 `172.28.0.0/16`；`netstat -rn -f inet \| grep 172.28` |
 | `[routes]` 改了但配置没变 | 只改 ini 不够，必须 `make render`（或 `make stack-up`，它内部会 render） |
-| 新增路由后 `*.localhost` 返回默认站点文本（如 `devops edge (nginx) is up`） | render 只生成 `data/conf.d/<host>.conf`，**nginx 不会自动重读**：`docker exec nginx-1 nginx -t && docker exec nginx-1 nginx -s reload`，或 `make stack-reset S=nginx MODE=solo` |
+| 新增路由后 `*.localhost` 返回默认站点文本（如 `devops edge (nginx) is up`） | render 只生成 `.data/conf.d/<host>.conf`，**nginx 不会自动重读**：`docker exec nginx-1 nginx -t && docker exec nginx-1 nginx -s reload`，或 `make stack-reset S=nginx MODE=solo` |
 | curl 返回 200 但浏览器打不开 | 服务端没问题，查宿主侧：地址栏被补成 `https://`（443 未启用，见 DEC-42）、Chrome "安全 DNS（DoH）"把 `*.localhost` 丢给远端解析、代理类插件劫持（系统代理的 bypass 列有 `localhost` 但**不含 `*.localhost`**）；零配置退路：直接开容器 IP `http://172.28.20.11:3000` |
 | 想看 nginx 收到过哪些请求 | `docker logs nginx-1`。**不要** `docker exec nginx-1 tail /var/log/nginx/access.log` —— 该文件是指向 `/dev/stdout` 的软链，`tail` 会永久阻塞 |
 
@@ -90,13 +90,13 @@ make stack-reset S=nginx MODE=solo
 
 ## 形态 marker 与 `make render` 的渲染形态（全局约定）
 
-每个部署单元在 `services/<dir>/data/.mode-<profile>` 存一行 `solo` / `ha`，由 `stack.sh` 在
+每个部署单元在 `services/<dir>/.data/.mode-<profile>` 存一行 `solo` / `ha`，由 `stack.sh` 在
 `up` / `reset` 时先写 marker 再渲染。`make render` 会按 marker 逐目录调用 `render.sh`，
 **不再一律按 solo 重渲染**——否则一次全量 render 会把 ha 的 `entry.sh` / `my.cnf`
 悄悄打回 solo 形态（踩过：pg 演练后用 `make render`，patroni-1 被换成了 solo 的 postgres）。
 
 - 没 marker 的目录按 `solo` 渲染；同一目录多 profile（`redis`）取最近修改的 marker。
-- marker 在 `data/` 下，不入库；换机器后先 `make stack-up` 一次，形态即重新固化。
+- marker 在 `.data/` 下，不入库；换机器后先 `make stack-up` 一次，形态即重新固化。
 - marker 还被三处消费：`prometheus` 的 render 据此**只列真会起的抓取目标**（DEC-47）、
   `doctor` 第 15 项据此算出「该在跑的容器」（DEC-48）、`stack.sh` 据此定 MODE 缺省（DEC-50）。
 
@@ -163,7 +163,7 @@ primary 后才监听 6446 → `--wait` 超时失败 → bootstrap 永远轮不�
 
 `172.28.9.x`（数据库域）。solo 只有 `etcd-1`；ha 三节点 `etcd-1..3`、
 peer 走 `2380`、client 走 `2379`，`initial-cluster-state` 首次为 `new`，
-数据目录 `data/<node>`（solo 为 `data/solo`）。
+数据目录 `.data/<node>`（solo 为 `.data/solo`）。
 
 ```bash
 make stack-up S=etcd MODE=ha
@@ -233,8 +233,8 @@ curl -s http://172.28.11.41:7777/metrics | grep -c '^nats'
 | `redis-sentinel` | `redis-master` + 2 replica + 3 sentinel（`devmaster`） | `172.28.2.11-13` / `.21-23` |
 | `redis-cluster` | 3 master + 3 replica（`cluster-announce-ip` 写死） | `172.28.3.11-13` / `.21-23` |
 
-两组 profile 各自有 exporter（`9121`）；数据按形态隔离：`data/sentinel/<node>`、
-`data/cluster/<node>`（solo 落在各自 `data/active` 下的 `solo` 子树）。
+两组 profile 各自有 exporter（`9121`）；数据按形态隔离：`.data/sentinel/<node>`、
+`.data/cluster/<node>`（solo 落在各自 `.data/active` 下的 `solo` 子树）。
 密码取 `env/.env` 的 `REDIS_PASSWORD`，所有节点一致。
 
 ```bash
@@ -299,11 +299,11 @@ docker exec mongo-1 mongosh --quiet --eval 'rs.status().members.map(m=>m.name+" 
 
 | mode | 容器 | 说明 |
 |---|---|---|
-| `solo` | `mysql-1` + `mysql-exporter` | 单实例，`data/solo/data` |
+| `solo` | `mysql-1` + `mysql-exporter` | 单实例，`.data/solo/data` |
 | `ha` | `mysql-1..3` + `mysql-router-1..2` + exporter | 三节点 MGR（单主），Router 读写分离 |
 
 实例 `3306`（组复制内部 `33061`）；Router `6446` 走 `first-available`（默认主）、
-`6447` 走 `round-robin`（只读）。数据目录按形态隔离：`data/<node>/data`。
+`6447` 走 `round-robin`（只读）。数据目录按形态隔离：`.data/<node>/data`。
 
 ```bash
 make stack-up S=mysql MODE=ha
@@ -336,7 +336,7 @@ docker exec mysql-1 mysql -h172.28.4.31 -P6447 -uroot -p"$MYSQL_ROOT_PASSWORD" -
 | Docker daemon 重启 / 全量 `down` 后三台都 `Up` 但 MGR 全 `OFFLINE` | 预期：`group_replication_start_on_boot=OFF` 是防裂脑的设计，不会自动成组。`make stack-up S=mysql`（省略 MODE 即沿用 ha）重跑 `bootstrap.sh`：因为**没有任何节点是 ONLINE**，走的是"首次成组"分支（清 GTID → 重建组 → join → adoptFromGR/rescan），不是"只补离队节点"；数据保留。两段式启动（DEC-52）保证这一步真能跑到。下游 nacos 会因此 crash loop，先修 mysql 再修 nacos（plan §8.4） |
 | `bootstrap.sh` 在 `configuring recovery channel` 就退出（输出里没有错误行） | `sql()` 里 `2>/dev/null` 吞掉了 stderr，实际是 `ERROR 1290 ... --super-read-only`：重启后节点带只读回来而成组前必须建 `repl` 用户。已由首次成组分支前的 `SET GLOBAL super_read_only=OFF` 修掉（DEC-52） |
 | `mysql-router-*` 一直 `unhealthy` | 健康检查是 `exec 3<>/dev/tcp/127.0.0.1/6446`（只有 bash 支持），而 Router 只在 MGR 有 ONLINE primary 时才监听 6446 —— 先查成员表而不是 Router 本身 |
-| Router 报 `One can only use the -u/--user switch if running as root` | 镜像以 uid 999 运行；去掉 `--user=root`，把 `data/mysql-router-*` chmod 0777 |
+| Router 报 `One can only use the -u/--user switch if running as root` | 镜像以 uid 999 运行；去掉 `--user=root`，把 `.data/mysql-router-*` chmod 0777 |
 | Router 起不来，缺 `mysql_innodb_cluster_metadata` | 静态路由不依赖 AdminAPI 元数据；本仓库不用 `mysqlrouter --bootstrap`（偏差见 pending-decisions） |
 | 组复制成员 `ERROR` 后反复重试 | 先 `stack-reset S=mysql MODE=ha`，不要在半死集群上手工 `START GROUP_REPLICATION` |
 
@@ -387,7 +387,7 @@ docker exec patroni-1 psql "postgresql://postgres:$PG_SUPERUSER_PASSWORD@172.28.
 
 配置**不走镜像的 `KAFKA_*` 环境变量包装器**（KRaft 校验会把 `0.0.0.0` 误判）：
 `render.sh` 直接写 `server.properties`，`entry.sh` 首次启动时用固定 `clusterId`
-（`data/active/kafka-cluster-id`）执行 `kafka-storage.sh format`。
+（`.data/active/kafka-cluster-id`）执行 `kafka-storage.sh format`。
 
 ```bash
 make stack-up S=kafka MODE=ha
@@ -482,7 +482,7 @@ docker exec rabbit-1 rabbitmqctl list_queues name type messages
 `scrape_configs` 全部由 ini 生成：exporter 行一个 job、redis 走 `/scrape` 中继、
 etcd/consul/rabbitmq/nacos 按角色生成多 target。`entry.sh` 带
 `--web.external-url=http://prometheus.localhost/`、`--web.enable-lifecycle`、
-保留 15d / 2GB。TSDB：solo `data/solo/tsdb`、ha `data/<node>/tsdb`。
+保留 15d / 2GB。TSDB：solo `.data/solo/tsdb`、ha `.data/<node>/tsdb`。
 
 ```bash
 make stack-up S=prometheus MODE=ha
@@ -513,7 +513,7 @@ curl -s http://172.28.12.11:9090/-/ready
 
 ## alertmanager（`172.28.12.21`）
 
-单节点，`9093`；`receiver: nul`（只收不发，不外发邮件/webhook）。存储 `data/alertmanager`，
+单节点，`9093`；`receiver: nul`（只收不发，不外发邮件/webhook）。存储 `.data/alertmanager`，
 Prometheus 的 `alerting` 段固定指向它。
 
 ```bash
@@ -529,13 +529,13 @@ curl -s http://172.28.12.21:9093/api/v2/alerts
 |---|---|
 | 收不到告警通知 | 设计如此：`nul` receiver；要外发得加 receiver（超出 Lab 范围） |
 | 改了路由没生效 | `alertmanager.yml` 是渲染产物；改 `render.sh` 后重建容器 |
-| silence 重启后消失 | 存储路径应在 `data/alertmanager`；`stack-reset` 会清掉 |
+| silence 重启后消失 | 存储路径应在 `.data/alertmanager`；`stack-reset` 会清掉 |
 
 ---
 
 ## grafana（`172.28.12.31`）
 
-单节点，`3000`；数据源与面板全部 provisioning（`data/active/grafana/provisioning/`）：
+单节点，`3000`；数据源与面板全部 provisioning（`.data/active/grafana/provisioning/`）：
 Prometheus（默认） + Jaeger，面板在 `DevOps` 目录（`overview.json`）。
 账号取 `env/.env` 的 `GRAFANA_ADMIN_PASSWORD`。
 
@@ -555,7 +555,7 @@ curl -s -u admin:"$GRAFANA_ADMIN_PASSWORD" http://172.28.12.31:3000/api/datasour
 |---|---|
 | 数据源红叉 | URL 必须写容器 IP（`172.28.12.11:9090`），写 `localhost` 会指向 grafana 自己 |
 | 改了 provisioning 不生效 | provisioning 只在启动时读；`docker compose restart grafana` |
-| 面板不出现 | `dashboards.yml` 的 `path` 必须是**容器视角** `/data/active/grafana/dashboards`；compose 只挂 `./data:/data`，写宿主绝对路径时容器里不存在，provisioning 静默空列表（render.sh 已固定用 `CTR_DASHBOARDS`）|
+| 面板不出现 | `dashboards.yml` 的 `path` 必须是**容器视角** `/data/active/grafana/dashboards`；compose 只挂 `./.data:/data`，写宿主绝对路径时容器里不存在，provisioning 静默空列表（render.sh 已固定用 `CTR_DASHBOARDS`）|
 | 登录失败 | 密码在 `env/.env`；改后需重建容器（env_file 在启动时注入） |
 
 ---
@@ -564,7 +564,7 @@ curl -s -u admin:"$GRAFANA_ADMIN_PASSWORD" http://172.28.12.31:3000/api/datasour
 
 单节点，jaeger v2（OTel Collector 发行版）：`16686` UI/查询、`4317` OTLP gRPC、`4318` OTLP HTTP、
 `8888` 自身指标、`13133` 健康（healthcheckv2）。存储用 Badger：
-`data/jaeger/badger/{keys,values}`，`ttl.spans: 72h`。
+`.data/jaeger/badger/{keys,values}`，`ttl.spans: 72h`。
 
 ```bash
 make stack-up S=jaeger MODE=solo
@@ -579,7 +579,7 @@ curl -s http://172.28.12.32:16686/api/services
 |---|---|
 | 启动报 `'badger' has invalid keys: directory` | v2 字段是 `directories.keys` / `directories.values`，不是单数 `directory` |
 | 启动报 `'badger.ttl' has invalid keys: time` | TTL 字段是 `ttl.spans`（不是 `ttl.time`） |
-| 重启后 trace 丢失 | Badger 目录在 `data/jaeger/`，但 `stack-reset` 会清；不要拿它当持久存储 |
+| 重启后 trace 丢失 | Badger 目录在 `.data/jaeger/`，但 `stack-reset` 会清；不要拿它当持久存储 |
 | 健康检查 404 | v2 用 `healthcheckv2`（`/status`），不是 v1 的 `/` |
 
 ---
@@ -643,7 +643,7 @@ nacos 的库表在 mysql，**没有 `nacos_config` 它就起不来**：`solo` �
 
 | 容器路径 | 宿主来源 | 读写 |
 |---|---|---|
-| `/docs` | `services/docsify/data/site/`（render 产物：`index.html` / `assets/` / `_sidebar.md`） | rw，但 `DOCSIFY_AUTO_INIT=false` 下容器不写任何文件 |
+| `/docs` | `services/docsify/.data/site/`（render 产物：`index.html` / `assets/` / `_sidebar.md`） | rw，但 `DOCSIFY_AUTO_INIT=false` 下容器不写任何文件 |
 | `/docs/content` | 仓库 `docs/` | `:ro` |
 
 内容不复制、不改写：站点只把 `docs/` 的 markdown 直读。镜像自带 `HEALTHCHECK`，骨架另声明 `wget --spider :3000/`（`bootstrap.sh` 探 `root / content / assets` 三个 200）。
@@ -674,17 +674,17 @@ curl -s http://172.28.20.11:3000/_sidebar.md
 make stack-reset S=docsify MODE=solo
 ```
 
-只清 `services/docsify/data/`（= 可重建的站点壳），**不碰仓库 `docs/`**（只读挂载，容器也写不了）。
+只清 `services/docsify/.data/`（= 可重建的站点壳），**不碰仓库 `docs/`**（只读挂载，容器也写不了）。
 
 ### 坑
 
 | 现象 | 原因 / 处理 |
 |---|---|
 | `bootstrap.sh` 报 `content=404` | `docs/` 未挂载或路径不对；先 `make render`，再看 `.generated/docsify.yml` 的第二条 volume 是否指向仓库 `docs/` |
-| 容器启动即退出，日志报 `Docsify can't find index.html!` | `DOCSIFY_AUTO_INIT=false`（严格模式）且 `data/site/index.html` 不在；跑一次 `make render` 即补回 |
+| 容器启动即退出，日志报 `Docsify can't find index.html!` | `DOCSIFY_AUTO_INIT=false`（严格模式）且 `.data/site/index.html` 不在；跑一次 `make render` 即补回 |
 | 新加的 `docs/x.md` 不在侧栏 | `_sidebar.md` 是 render 时生成的快照；`make render` 后刷新 |
 | 删了文档但侧栏还挂着它，点进去"像是有内容" | 同一个快照原因；且 `notFoundPage: "content/plan.md"` 会把 404 **静默回落到首页**，看上去像链接生效。删文档后也要 `make render`；判断真假请直看 `curl -o /dev/null -w '%{http_code}' :3000/content/<file>.md` |
 | `docsify.localhost` 返回默认 `devops edge (nginx) is up` | nginx 还没 reload（新 `conf.d/*.conf` 要重读）：`docker exec nginx-1 nginx -s reload` 或 `make stack-reset S=nginx MODE=solo` |
-| 页面能开但样式/脚本缺失（白底无侧栏） | `data/site/assets/` 丢了或与镜像版本不同步；`make render` 重拷，必要时按上表从镜像重新导出 |
+| 页面能开但样式/脚本缺失（白底无侧栏） | `.data/site/assets/` 丢了或与镜像版本不同步；`make render` 重拷，必要时按上表从镜像重新导出 |
 | 子目录文档（`docs/archive/*`）里的相对链接点不开 | 链接按仓库目录书写（相对于文档自身），子目录内互指正常；跨回顶层请写 `../plan.md` |
 | 想直接返宿主端口 8080（原草稿写法） | 违反 F06（只有 `nginx-1` 发布宿主端口）；走 `docsify.localhost` |

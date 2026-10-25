@@ -7,7 +7,7 @@ STACK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${STACK_DIR}/../../scripts/lib.sh"
 
 MODE="${1:-solo}"
-ACTIVE="${STACK_DIR}/data/active"
+ACTIVE="${STACK_DIR}/.data/active"
 ensure_dir "${ACTIVE}"
 
 # shellcheck disable=SC1091
@@ -61,7 +61,7 @@ for row in $(rows_of nacos); do
     case "${role}" in
         server)
             ensure_dir "${ACTIVE}/${name}"
-            ensure_dir "${STACK_DIR}/data/${name}/logs"
+            ensure_dir "${STACK_DIR}/.data/${name}/logs"
             : >"${ACTIVE}/${name}/cluster.conf"
             for peer in ${servers}; do
                 echo "${peer}" >>"${ACTIVE}/${name}/cluster.conf"

@@ -6,7 +6,7 @@ STACK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${STACK_DIR}/../../scripts/lib.sh"
 
 MODE="${1:-solo}"
-ACTIVE="${STACK_DIR}/data/active"
+ACTIVE="${STACK_DIR}/.data/active"
 ensure_dir "${ACTIVE}"
 
 # shellcheck disable=SC1091
@@ -112,7 +112,7 @@ done
 for row in $(rows_of pg); do
     IFS='|' read -r name ip _ports role _mode <<<"${row}"
     [[ "${role}" == "dcs" ]] || continue
-    ensure_dir "${STACK_DIR}/data/${name}"
+    ensure_dir "${STACK_DIR}/.data/${name}"
     ensure_dir "${ACTIVE}/${name}"
     cat >"${ACTIVE}/${name}/etcd.yml" <<EOF
 name: ${name}

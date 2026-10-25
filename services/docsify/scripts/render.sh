@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 渲染 docsify 站点壳：config/index.html.tpl + config/assets → data/site/
-# 产物落 data/（DEC-11）；内容本体不复制，由 compose 只读挂载仓库 docs/ 到 /docs/content。
+# 渲染 docsify 站点壳：config/index.html.tpl + config/assets → .data/site/
+# 产物落 .data/（DEC-11）；内容本体不复制，由 compose 只读挂载仓库 docs/ 到 /docs/content。
 # docsify 无 solo/ha 之分，mode 参数只接收不使用。
 set -euo pipefail
 
@@ -8,7 +8,7 @@ STACK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${STACK_DIR}/../../scripts/lib.sh"
 
 ROOT="${DEVOPS_ROOT}"
-SITE="${STACK_DIR}/data/site"
+SITE="${STACK_DIR}/.data/site"
 ensure_dir "${SITE}"
 
 TITLE="devops 本地栈"

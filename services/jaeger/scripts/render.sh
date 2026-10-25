@@ -5,10 +5,10 @@ set -euo pipefail
 STACK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${STACK_DIR}/../../scripts/lib.sh"
 
-ACTIVE="${STACK_DIR}/data/active"
+ACTIVE="${STACK_DIR}/.data/active"
 ensure_dir "${ACTIVE}/jaeger"
-ensure_dir "${STACK_DIR}/data/jaeger/badger/keys"
-ensure_dir "${STACK_DIR}/data/jaeger/badger/values"
+ensure_dir "${STACK_DIR}/.data/jaeger/badger/keys"
+ensure_dir "${STACK_DIR}/.data/jaeger/badger/values"
 
 cat >"${ACTIVE}/jaeger/config.yml" <<'EOF'
 service:

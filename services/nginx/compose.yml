@@ -9,7 +9,7 @@ services:
       - "${ENTRY_HTTP_PORT:-80}:80"
     volumes:
       - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./data/conf.d:/etc/nginx/conf.d:ro
+      - ./.data/conf.d:/etc/nginx/conf.d:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz || exit 1"]
 
@@ -19,6 +19,6 @@ services:
     container_name: nginx-2
     volumes:
       - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./data/conf.d:/etc/nginx/conf.d:ro
+      - ./.data/conf.d:/etc/nginx/conf.d:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz || exit 1"]

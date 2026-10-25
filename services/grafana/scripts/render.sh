@@ -6,16 +6,16 @@ STACK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${STACK_DIR}/../../scripts/lib.sh"
 
 STACK_NAME="grafana"
-ACTIVE="${STACK_DIR}/data/active"
+ACTIVE="${STACK_DIR}/.data/active"
 PROV="${ACTIVE}/${STACK_NAME}/provisioning"
-# 容器内视角：compose 只把 ./data 挂到 /data，所以写进 provisioning 的 path
+# 容器内视角：compose 只把 ./.data 挂到 /data，所以写进 provisioning 的 path
 # 必须是 /data/... 而不是宿主的 ${ACTIVE}（后者在容器里不存在，面板会全部不加载）
 CTR_DATA="/data"
 CTR_DASHBOARDS="${CTR_DATA}/active/${STACK_NAME}/dashboards"
-ensure_dir "${PROV}/datasources"
+ensure_dir "${PROV}/.datasources"
 ensure_dir "${PROV}/dashboards"
 ensure_dir "${ACTIVE}/${STACK_NAME}/dashboards"
-ensure_dir "${STACK_DIR}/data/${STACK_NAME}"
+ensure_dir "${STACK_DIR}/.data/${STACK_NAME}"
 
 # shellcheck disable=SC1091
 set -a; source "${DEVOPS_ROOT}/env/.env"; set +a
@@ -24,7 +24,7 @@ PASS="${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD missing in env/.env}"
 prom="http://$(ip_of prometheus-1):9090"
 jaeger="http://$(ip_of jaeger):16686"
 
-cat >"${PROV}/datasources/datasources.yml" <<EOF
+cat >"${PROV}/.datasources/datasources.yml" <<EOF
 apiVersion: 1
 datasources:
   - name: Prometheus

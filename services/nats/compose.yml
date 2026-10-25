@@ -6,7 +6,7 @@ services:
     container_name: nats-1
     command: ["-c", "/data/active/nats-1/nats.conf"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8222/healthz >/dev/null"]
 
@@ -16,7 +16,7 @@ services:
     container_name: nats-2
     command: ["-c", "/data/active/nats-2/nats.conf"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8222/healthz >/dev/null"]
 
@@ -26,7 +26,7 @@ services:
     container_name: nats-3
     command: ["-c", "/data/active/nats-3/nats.conf"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8222/healthz >/dev/null"]
 

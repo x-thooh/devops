@@ -33,7 +33,7 @@ mode_of() {
     ini rows | awk -F'|' -v n="$1" '$2 == n { print $6 }'
 }
 
-# 该 profile 当前的部署形态：读 stack.sh 写的 services/<dir>/data/.mode-<profile>。
+# 该 profile 当前的部署形态：读 stack.sh 写的 services/<dir>/.data/.mode-<profile>。
 # 没有 marker = 从没起过，回退第 2 参数（缺省 ha，保住 DEC-23「新增栈自动纳入监控」）。
 deployed_mode() {
     local profile="${1:?profile}" fallback="${2:-ha}" marker
@@ -46,7 +46,7 @@ deployed_mode() {
 }
 
 # 生成物目录：配置/启动脚本都落这里，容器挂载 /data 后按同一相对路径读取
-active_dir() { echo "${STACK_DIR}/data/active"; }
+active_dir() { echo "${STACK_DIR}/.data/active"; }
 
 # 幂等创建目录并给容器用户可写（macOS bind mount 忽略 uid，这里只保证目录存在）
 ensure_dir() { mkdir -p "$1"; }

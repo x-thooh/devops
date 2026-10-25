@@ -5,9 +5,9 @@ set -euo pipefail
 STACK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${STACK_DIR}/../../scripts/lib.sh"
 
-ACTIVE="${STACK_DIR}/data/active"
+ACTIVE="${STACK_DIR}/.data/active"
 ensure_dir "${ACTIVE}/alertmanager"
-ensure_dir "${STACK_DIR}/data/alertmanager"
+ensure_dir "${STACK_DIR}/.data/alertmanager"
 
 cat >"${ACTIVE}/alertmanager/alertmanager.yml" <<'EOF'
 global:

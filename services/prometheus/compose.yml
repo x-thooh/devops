@@ -7,7 +7,7 @@ services:
     container_name: prometheus-1
     entrypoint: ["/bin/sh", "/data/active/prometheus-1/entry.sh"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9090/-/ready >/dev/null"]
 
@@ -17,6 +17,6 @@ services:
     container_name: prometheus-2
     entrypoint: ["/bin/sh", "/data/active/prometheus-2/entry.sh"]
     volumes:
-      - ./data:/data
+      - ./.data:/data
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9090/-/ready >/dev/null"]
