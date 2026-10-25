@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 渲染 docsify 站点壳：config/index.html.tpl + config/assets → .data/site/
-# 产物落 .data/（DEC-11）；内容本体不复制，由 compose 只读挂载仓库 docs/ 到 /docs/content。
+# 产物落 .data/（DEC-11）；内容本体不复制，由 compose 只读挂载到 /docs/content。
+# 侧栏/首页不在此生成：改由容器内 config/entry.sh 按实际挂载内容动态生成（见下）。
 # docsify 无 solo/ha 之分，mode 参数只接收不使用。
 set -euo pipefail
 
@@ -22,22 +23,9 @@ sed -e "s|@TITLE@|${TITLE}|g" \
 ensure_dir "${SITE}/assets"
 cp -f "${STACK_DIR}"/config/assets/* "${SITE}/assets/"
 
-# 3) 侧栏：按 docs/ 现有 markdown 生成（归档多一级，与 docs/ 目录形状一致）
-{
-    echo "- [${TITLE}](/)"
-    for f in "${ROOT}"/docs/*.md; do
-        [[ -e "${f}" ]] || continue
-        name="$(basename "${f}")"
-        echo "- [${name%.md}](content/${name})"
-    done
-    if compgen -G "${ROOT}/docs/archive/*.md" >/dev/null; then
-        echo "- 归档"
-        for f in "${ROOT}"/docs/archive/*.md; do
-            [[ -e "${f}" ]] || continue
-            name="$(basename "${f}")"
-            echo "  - [${name%.md}](content/archive/${name})"
-        done
-    fi
-} >"${SITE}/_sidebar.md"
+# 3) 侧栏/首页：不在此静态生成。改由容器启动时 config/entry.sh 按实际挂载的
+#    /docs/content 动态生成 _sidebar.md / home.md 并周期重扫（内容源无关）。
+#    删除旧版可能残留的静态侧栏，避免与运行时产物混淆。
+rm -f "${SITE}/_sidebar.md"
 
-echo "rendered docsify (site=${SITE#"${ROOT}/"}, docs=docs/)"
+echo "rendered docsify (site=${SITE#"${ROOT}/"}; 侧栏由容器动态生成)"

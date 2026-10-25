@@ -1,6 +1,7 @@
 # 手写骨架：不写 image / logging / restart / TZ / networks / IP
-# 无状态纯浏览（HA 豁免，DEC-46）：内容 = 仓库 docs/，以嵌套只读挂载挂到 /docs/content；
-# 站点壳（index.html / assets / _sidebar.md）由 render.sh 渲染到 .data/site/ = /docs。
+# 无状态纯浏览（HA 豁免，DEC-46）：内容源以只读嵌套挂载挂到 /docs/content（仓库 docs/ 或外部笔记库均可）；
+# 站点壳（index.html / assets）由 render.sh 渲染到 .data/site/ = /docs；
+# 侧栏 _sidebar.md / 首页 home.md 不再烤死，由 config/entry.sh 拉起、按实际挂载内容动态生成并周期重扫。
 # 不把仓库根挂进容器：避开 env/.env 与 backups/ 被静态服务读到。
 # DOCSIFY_AUTO_INIT=false：关掉镜像自举，/docs 缺 index.html 直接退出，不写任何文件。
 services:
@@ -8,11 +9,13 @@ services:
     x-image: docsify
     profiles: ["docsify"]
     container_name: docsify-1
+    entrypoint: ["/bin/sh", "/opt/docsify/entry.sh"]
     environment:
       DOCSIFY_AUTO_INIT: "false"
     volumes:
       - ./.data/site:/docs
-      - ../../docs:/docs/content:ro
+      - /Users/thooh/Notes:/docs/content:ro
+      - ./config:/opt/docsify:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/ || exit 1"]
     mem_limit: 128m

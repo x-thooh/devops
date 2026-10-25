@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0" />
     <title>@TITLE@</title>
-    <meta name="description" content="devops 仓库文档（docsify 只读浏览）" />
+    <meta name="description" content="docsify 只读浏览（内容源动态生成侧栏）" />
     <link rel="stylesheet" href="assets/vue.css" />
     <link rel="stylesheet" href="assets/toc.css" />
     <style>
@@ -19,13 +19,14 @@
   <body class="body--ready">
     <div id="app">Loading...</div>
     <script>
-      // 产物：services/docsify/data/site/index.html（由 scripts/render.sh 从本模板生成）
-      // 内容根 = /docs（站点壳，render 产物）；仓库 docs/ 以只读嵌套挂载挂到 /docs/content
+      // 产物：services/docsify/.data/site/index.html（由 scripts/render.sh 从本模板生成）
+      // 内容根 = /docs（站点壳）；实际内容以只读嵌套挂载挂到 /docs/content；
+      // 侧栏 _sidebar.md 与首页 home.md 由容器内 config/entry.sh 按挂载内容动态生成。
       window.$docsify = {
         name: "@TITLE@",
         nameLink: "@BASEPATH@/",
-        homepage: "content/plan.md",
-        notFoundPage: "content/plan.md",
+        homepage: "home.md",
+        notFoundPage: "home.md",
         auto2top: true,
         loadSidebar: "_sidebar.md",
         alias: {

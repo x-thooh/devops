@@ -633,7 +633,7 @@ nacos 的库表在 mysql，**没有 `nacos_config` 它就起不来**：`solo` �
 
 ## docsify（`172.28.20.11`，文档浏览）
 
-把仓库 `docs/` 变成一个可浏览的静态站点（docsify，无需构建）。**第 15 域，由 §17 预留块 `.20–.29` 启用**（后续新域从 `.21` 取）。
+把一个“内容目录”变成可浏览的静态站点（docsify，无需构建）。**内容源无关**：`/docs/content` 可挂仓库 `docs/`，也可挂外部笔记库；侧栏/首页**由容器按实际挂载内容动态生成**，不靠 `make render` 烤快照。**第 15 域，由 §17 预留块 `.20–.29` 启用**（后续新域从 `.21` 取）。
 
 | mode | 容器 | 说明 |
 |---|---|---|
@@ -643,25 +643,29 @@ nacos 的库表在 mysql，**没有 `nacos_config` 它就起不来**：`solo` �
 
 | 容器路径 | 宿主来源 | 读写 |
 |---|---|---|
-| `/docs` | `services/docsify/.data/site/`（render 产物：`index.html` / `assets/` / `_sidebar.md`） | rw，但 `DOCSIFY_AUTO_INIT=false` 下容器不写任何文件 |
-| `/docs/content` | 仓库 `docs/` | `:ro` |
+| `/docs` | `services/docsify/.data/site/`（render 产物 `index.html`/`assets/`；`_sidebar.md`/`home.md` 由容器动态写入） | rw |
+| `/docs/content` | 内容源：当前挂外部笔记库 `/Users/thooh/Notes`（改指仓库则用 `../../docs`） | `:ro` |
+| `/opt/docsify` | `services/docsify/config/`（`entry.sh` + `gen-sidebar.js`） | `:ro` |
 
-内容不复制、不改写：站点只把 `docs/` 的 markdown 直读。镜像自带 `HEALTHCHECK`，骨架另声明 `wget --spider :3000/`（`bootstrap.sh` 探 `root / content / assets` 三个 200）。
+镜像自带入口是 `docsify serve .`；骨架用 `entrypoint: ["/bin/sh", "/opt/docsify/entry.sh"]` 包装（对齐 mysql-router 的 entry.sh 约定）：先生成一次侧栏 → 后台 `gen-sidebar.js watch` 每 15s 重扫 → `exec docsify serve .` 接管 PID 1。`config/` 不进 web 根（挂 `/opt/docsify`），避免脚本被静态服务读到。
+
+内容不复制、不改写。`bootstrap.sh` 探四项：`root` 200、`content` 挂载非空、`sidebar`（`/_sidebar.md` 已被动态生成且非空，异步轮询等待）、`assets` 200。
 
 ```bash
 make stack-up S=docsify MODE=solo
-make stack-status S=docsify MODE=solo   # root 200 sidebar 200 content 200
-make ui-open S=docsify                 # http://docsify.localhost（首页 = docs/plan.md）
-curl -s http://172.28.20.11:3000/_sidebar.md
+make stack-status S=docsify MODE=solo   # root/content/sidebar/assets 全绿
+make ui-open S=docsify                  # http://docsify.localhost（首页 = 动态 home.md）
+curl -s http://172.28.20.11:3000/_sidebar.md   # 侧栏由容器按 /docs/content 生成
 ```
 
 ### 改内容 / 改样式
 
 | 要改的东西 | 改哪里 | 生效方式 |
 |---|---|---|
-| 文档正文 | `docs/*.md` | 刷新浏览器（内容直读，无需重启） |
-| 侧栏 | `scripts/render.sh` 的生成规则 | `make render`（`_sidebar.md` 只在 render 时重算） |
-| 站点样式/标题 | `config/index.html.tpl` 的 `TITLE` / `$docsify` 配置 | `make render` + `make stack-reset S=docsify` |
+| 文档正文 | 内容目录（`/docs/content` 的挂载源）里的 `.md` | 刷新浏览器即变；侧栏由 watch 每 15s 自动反映增删，**无需 render** |
+| 侧栏/首页生成规则（深度、上限、重扫周期、跳过目录） | `config/gen-sidebar.js` + compose `environment`（`DOCSIFY_MAX_DEPTH` / `DOCSIFY_TOTAL_CAP` / `DOCSIFY_REGEN_SEC` / `DOCSIFY_SKIP_DIRS`） | 改 env 后 `make stack-up` 重启；改脚本即时（下次重扫生效） |
+| 内容源（挂笔记库 ↔ 挂仓库 docs/） | `services/docsify/compose.yml` 的 `/docs/content` 挂载行 | `make render` + 重建容器；侧栏自适应新源 |
+| 站点样式/标题 | `config/index.html.tpl` 的 `$docsify` 配置；侧栏标题用 `DOCSIFY_TITLE` env | `make render` + `make stack-up` |
 | 前端资产（docsify.js / 主题） | `config/assets/` | 从镜像重新导出：`C=$(docker create rockben/docsify-server:<ver>) && docker cp "$C:/opt/docsify-template/assets/." services/docsify/config/assets/ && docker rm "$C"`，再 `make render` |
 
 ### solo ↔ ha 语义差异
@@ -674,16 +678,16 @@ curl -s http://172.28.20.11:3000/_sidebar.md
 make stack-reset S=docsify MODE=solo
 ```
 
-只清 `services/docsify/.data/`（= 可重建的站点壳），**不碰仓库 `docs/`**（只读挂载，容器也写不了）。
+只清 `services/docsify/.data/`（= 可重建的站点壳，含运行时生成的 `_sidebar.md`/`home.md`），**不碰内容源**（`:ro` 挂载，不受影响）；重启后 entry.sh 会重新生成侧栏。
 
 ### 坑
 
 | 现象 | 原因 / 处理 |
 |---|---|
-| `bootstrap.sh` 报 `content=404` | `docs/` 未挂载或路径不对；先 `make render`，再看 `.generated/docsify.yml` 的第二条 volume 是否指向仓库 `docs/` |
+| `bootstrap.sh` 报 `content=empty` | 内容源没挂上：看 `.generated/docsify.yml` 里 `/docs/content` 的宿主路径是否存在 |
+| `bootstrap.sh` 报 `sidebar=empty` | `config/entry.sh` 未生成侧栏：确认 `/opt/docsify` 挂上且容器内有 `node`；看 `docker logs docsify-1` |
 | 容器启动即退出，日志报 `Docsify can't find index.html!` | `DOCSIFY_AUTO_INIT=false`（严格模式）且 `.data/site/index.html` 不在；跑一次 `make render` 即补回 |
-| 新加的 `docs/x.md` 不在侧栏 | `_sidebar.md` 是 render 时生成的快照；`make render` 后刷新 |
-| 删了文档但侧栏还挂着它，点进去"像是有内容" | 同一个快照原因；且 `notFoundPage: "content/plan.md"` 会把 404 **静默回落到首页**，看上去像链接生效。删文档后也要 `make render`；判断真假请直看 `curl -o /dev/null -w '%{http_code}' :3000/content/<file>.md` |
+| 新加/删除的 `.md` 暂时不在侧栏 | 侧栏由 watch 周期重扫（默认 15s）；稍等即刷新，要立即生效则 `make stack-reset S=docsify` 重启（不再靠 `make render`） |
 | `docsify.localhost` 返回默认 `devops edge (nginx) is up` | nginx 还没 reload（新 `conf.d/*.conf` 要重读）：`docker exec nginx-1 nginx -s reload` 或 `make stack-reset S=nginx MODE=solo` |
 | 页面能开但样式/脚本缺失（白底无侧栏） | `.data/site/assets/` 丢了或与镜像版本不同步；`make render` 重拷，必要时按上表从镜像重新导出 |
 | 子目录文档（`docs/archive/*`）里的相对链接点不开 | 链接按仓库目录书写（相对于文档自身），子目录内互指正常；跨回顶层请写 `../plan.md` |
