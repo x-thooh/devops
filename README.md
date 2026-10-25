@@ -21,12 +21,16 @@
 
 - macOS + OrbStack，`docker context` 必须是 `orbstack`。
 - Docker Compose v2.20+（实测 v5.5.0）。
-- Python 3.9+ 与 PyYAML（`python3 -c 'import yaml'`）。
+- [mise](https://mise.jdx.dev) 管 Python 版本（`brew install mise`），由 `mise.toml` 钉 `python = "3.12"`。
+- 跑一次 `make setup` 建仓库内 `.venv` 并装 PyYAML。**不要**往宿主解释器 `pip install pyyaml`：
+  宿主可能同时有 uv / mise / `/usr/bin` 三个 `python3`，不同 shell（交互式 vs `bash -lc` / cron / IDE）
+  会选不中同一个（DEC-51）。
 - 宿主 80 端口空闲；`172.28.0.0/16` 未被 VPN / 其它网桥占用。
 
 ## 快速开始
 
 ```bash
+make setup                    # 首次 / 换机器：mise 装 python 3.12 + 建 .venv + 装 PyYAML
 make secrets                  # 生成 env/.env（chmod 600，已存在则不覆盖）
 make render                   # ini + base + 骨架 → compose.generated.yml
 make doctor                   # 15 项体检
@@ -56,6 +60,7 @@ make tier-s        # solo 全栈（未实现的栈自动 skip）
 | 路径 | 角色 | 提交 |
 |---|---|---|
 | `stock/network.ini` | IP / 端口 / role / mode / 路由的唯一权威 | 是 |
+| `mise.toml` | Python 解释器版本（工具链唯一入口） | 是 |
 | `base/network.yml` | 唯一 `subnet` / `gateway` | 是 |
 | `base/anchors.yml` | `restart` / `logging` / `TZ` / 健康检查默认 | 是 |
 | `base/images.yml` | 镜像唯一清单 | 是 |
@@ -64,6 +69,7 @@ make tier-s        # solo 全栈（未实现的栈自动 skip）
 | `.generated/<stack>.yml` | 渲染后的单栈 compose | 否 |
 | `compose.generated.yml`、根 `compose.yml` | 聚合入口（同一内容） | 否 |
 | `services/<stack>/data/` | 运行时状态与渲染产物 | 否 |
+| `.venv/` | 仓库内 Python 环境（`make setup` 重建） | 否 |
 | `env/.env` | 本地密钥与覆盖 | 否 |
 
 硬约束：
@@ -79,11 +85,12 @@ make tier-s        # solo 全栈（未实现的栈自动 skip）
 
 | 命令 | 作用 |
 |---|---|
+| `make setup` | 建 / 修 `.venv`（mise 定版本 + 装 PyYAML）；镜像不通时用 `PIP_INDEX_URL=<mirror>` |
 | `make render` | ini + base + 各栈模板 → 聚合 compose + `data/` 下的真实配置 |
 | `make doctor` | 15 项体检；失败项按提示修，不要手工绕过 |
 | `make up` / `make down` | 起 / 停当前档位（默认 A） |
 | `make tier-s` … `tier-f` | 档位启动；未实现栈自动跳过 |
-| `make stack-up S=<profile> MODE=solo\|ha` | 单栈起停；`S` 是 profile，不是目录 |
+| `make stack-up S=<profile> [MODE=solo\|ha]` | 单栈起停；`S` 是 profile 不是目录；省略 `MODE` 沿用当前形态（DEC-50），顺序是"起容器 → bootstrap → 等健康"（DEC-52） |
 | `make stack-status S=<profile>` | 容器状态 + 栈自带探测；省略 `MODE` 则按当前部署形态（DEC-50） |
 | `make stack-reset S=<profile>` | 停容器 → 删本 profile 的 `data/` 子树 → 重渲染 → 重启 |
 | `make stack-shell S=<profile> N=<node>` | 进容器 |
@@ -99,7 +106,9 @@ make tier-s        # solo 全栈（未实现的栈自动 skip）
 - `MODE=ha`：`nginx-1` + `nginx-2` 均 healthy；`172.28.0.12/healthz` 返回 200。
 - 容器内 `date` 显示 `CST +0800`。
 - `grafana.localhost` 在观测栈未起时返回 502（不是 404 / 000）。
-- `git status` 不出现 `data/`、`env/.env`、`.generated/`、根 `compose*.yml`。
+- `git status` 不出现 `data/`、`env/.env`、`.generated/`、`.venv/`、根 `compose*.yml`。
+- 全量 `down` 后按依赖重跑 `make stack-up`：`S=mysql` 应在十几秒内回到 MGR 3 `ONLINE` +
+  两台 Router `6446/6447 ok`（两段式启动保证 bootstrap 真能跑到，DEC-52）。
 
 ## 故障排查
 
@@ -108,10 +117,12 @@ make tier-s        # solo 全栈（未实现的栈自动 skip）
 | `port is already allocated` | `lsof -nP -iTCP:80 -sTCP:LISTEN`；或改 `env/.env` 的 `ENTRY_HTTP_PORT` |
 | doctor 第 7 项失败 | `docker context use orbstack` |
 | doctor 第 8 项失败 | `netstat -rn -f inet \| grep 172.28`；停掉占用该网段的 VPN / 网桥 |
-| `ModuleNotFoundError: yaml` | `python3 -m pip install pyyaml` |
+| `ModuleNotFoundError: yaml` | 跑 `make setup`（依赖在 `.venv` 里）；**不要** `pip install` 进宿主解释器。pypi 直连不通的机器：`make setup PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple` |
+| 同一个仓库在终端能跑、在 cron / IDE Run Config 里报错 | 两个入口解析到的 `python3` 不是一个（PATH 顺序差异）；本仓库靠 Makefile 与 `scripts/lib.sh` 前置 `.venv/bin` 消除（DEC-51） |
 | 改了 nginx 配置不生效 | `make stack-reset S=nginx MODE=solo`（`stack-up` 不会重建未变化的容器） |
 | 502 / 000 分不清 | 502 = nginx 已收到请求但 upstream 未起；000 = 入口本身不可达 |
-| Docker 重启后容器都 `Up`、但 nacos 一直 `Restarting` | `restart` 只复活容器，MGR 不会自动成组（`start_on_boot=OFF` 是设计）；按依赖重跑 `make stack-up S=mysql MODE=ha` → `S=nacos MODE=ha`（plan §8.4） |
+| Docker 重启后容器都 `Up`、但 nacos 一直 `Restarting` | `restart` 只复活容器，MGR 不会自动成组（`start_on_boot=OFF` 是设计）；按依赖重跑 `make stack-up S=mysql` → `S=nacos`（省略 MODE 即沿用 ha，plan §8.4） |
+| `make stack-up S=mysql` 报 `container mysql-router-1 is unhealthy` | Router 只在 MGR 有 ONLINE primary 时才监听 6446；成组本来就是 bootstrap 的职责。已改为两段式启动（起容器 → bootstrap → 等健康，DEC-52）；旧写法下 bootstrap 永远轮不到 |
 | grafana 面板列表为空 | `dashboards.yml` 的 `path` 必须是容器视角 `/data/…`；`make render` 后 `docker compose restart grafana` |
 
 ## 目录

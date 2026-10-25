@@ -16,7 +16,7 @@
 | 分栈决策（P1–P7） | 11（D09–D16、D18–D19、D36） | 各自所属阶段 |
 | 方案缺口 | 16（D20–D34、D37） | 建议 P0/P1 一并定 |
 | 明确不做 | 12（N01–N12） | 已排除，供你否决 |
-| 已定案 | 34（F01–F34） | 已写入 plan v4.5 |
+| 已定案 | 36（F01–F36） | 已写入 plan v4.5 |
 
 **最小决策集**：**已清零** —— P0 的 8 项（D01–D08）全部落定，可直接进入 P0 实施（plan §13）。
 
@@ -60,6 +60,8 @@
 | **F32** | **`doctor` 增加第 15 项「运行态健康」**；并把"Docker daemon 重启后必须重跑 `make stack-up` 才能恢复集群不变量"写成正式口径（不把 `group_replication_start_on_boot` 改成 `ON`） | plan DEC-48 / §6.3 / §8.4 / R29 |
 | **F33** | **redis 的 `/scrape` 中继只列 6379 节点，不列 sentinel（26379）**：中继只有一份共享 `REDIS_PASSWORD`，而 sentinel 自身不设密码（只靠 `auth-pass` 连 master），带密码去连必 AUTH 失败 → `redis_up` 恒 0 而 `up` 仍为 1，又是一个无法与真故障区分的假信号 | plan DEC-49 / §16.2 |
 | **F34** | **`stack.sh` 的 MODE 缺省不再写死 solo**：读 `.mode-<profile>` marker 沿用当前部署形态，从没部署过才回退 solo（并打印解析结果）；避免 ha 部署被当 solo 查（MGR 成员表 vs `@@server_id`） | plan DEC-50 / stacks.md 全局约定 |
+| **F35** | **工具链固定走 mise**：`mise.toml`（入库）钉 `python = "3.12"`，依赖只进仓库内 `.venv/`（生成物），`make setup` 一键重建；Makefile 与 `scripts/lib.sh` 前置 `.venv/bin` | plan DEC-51 / stacks.md 全局约定 |
+| **F36** | **`stack-up` / `stack-reset` 改两段式（起容器 → bootstrap → 等健康），mysql 首次成组前先解 `super_read_only`**：单段 `up -d --wait` 对需要 bootstrap 才转健康的栈是顺序死循环，这让 DEC-48 的"重跑 `make stack-up` 即恢复"对 mysql 名实不符 | plan DEC-52 / §8.4 / stacks.md 全局约定 |
 
 ---
 

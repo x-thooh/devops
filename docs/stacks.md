@@ -112,6 +112,22 @@ make stack-reset S=nginx MODE=solo
 要显式换形态仍然必须写 `MODE=solo|ha`；DEC-48 的恢复口径（重跑 `make stack-up`）
 不带 MODE 时不再会把 ha 静默改成 solo。
 
+### 工具链：`mise.toml` + 仓库内 `.venv`（DEC-51）
+
+所有 `python3` 调用（render-all.py / doctor.py / ini.py）都固定命中 `.venv/bin/python3`：
+Makefile 前置 `.venv/bin` 到 PATH，`scripts/lib.sh` 同效（覆盖不走 make 的直接调用）。
+解释器版本由 `mise.toml` 钉（`python = "3.12"`），依赖只由 `make setup` 装进 `.venv`。
+
+为何不是"升级系统 Python"：`/usr/bin/python3` 是 Apple 随 Command Line Tools 发的（SIP 保护，
+升不动也不该动）；真因是宿主同时存在多个 `python3` 且 PATH 顺序随 shell 类型而变——实测
+`zsh -ic` 得 3.12、`zsh -lc` / `bash -lc` / `env -i` 得 3.9.6，于是出现过一次
+`make render` 报 `ModuleNotFoundError: yaml`。坑在于**两个解释器都能单独跑通**，
+症状只在换 shell 时出现，靠"我本地能跑"排查不出来。
+
+- 换机器 / 新开仓库：`make setup`（pypi 直连不通时 `make setup PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple`）。
+- `.venv/` 是生成物（已 gitignore）；**不要**把依赖装回宿主解释器（包括 `--break-system-packages`）。
+- 没装 mise 时 `make setup` 会提示后退出；其余目标仍会回退宿主 `python3`，不会硬坏。
+
 ### Docker daemon 重启后的恢复（重要）
 
 `restart: unless-stopped` 只会**复活容器**，不会恢复**集群不变量**——`mysql` 的
@@ -119,7 +135,27 @@ make stack-reset S=nginx MODE=solo
 `OFFLINE`，进而把下游（`nacos`）打成 crash loop。**容器都 Up ≠ 服务可用**。
 
 恢复口径见 plan §8.4 / DEC-48，一句话：按依赖顺序重跑 `make stack-up`（幂等），
-先 `mysql` 再 `nacos`；`make doctor` 第 15 项会把这种情况报成 FAIL。
+先 `mysql` 再 `nacos`。`make doctor` 第 15 项会把这种情况报出来：容器在跑但不健康
+（crash loop）= **FAIL**；marker 说该在跑而容器没在跑 = **WARN**（所以一次干净的全量
+`down` 后是 14 PASS / 1 WARN，不是 FAIL——语义是对的）。
+
+> 这句话在 DEC-52 之前对 mysql 是假的（下面两个坑只有在全量 `down` 后才会同时出现，
+> 逐栈 `stop/start` 演练探不到）。
+
+### `stack-up` 的两段式启动（DEC-52）
+
+`up` / `reset` 的实际顺序是：**起容器（不等健康）→ `bootstrap` → 再等健康**。
+
+旧写法 `up -d --wait` 后接 `bootstrap` 对**任何需要 bootstrap 才转健康的栈**都是死循环：
+mysql 实测 `down` 后三节点 MGR 全 `OFFLINE`，Router 只在 metadata cache 里看到 ONLINE
+primary 后才监听 6446 → `--wait` 超时失败 → bootstrap 永远轮不到 → Router 永远 `unhealthy`，
+还连累下游 nacos（11 次重启）。现在第一段能跑过去是因为 bootstrap 自带就绪轮询
+（各栈 20–60 次），第二段才把"真的健康"当终态。验证：`stack.sh rm mysql ha` 后重建
+11.7 s 回到 MGR 3 `ONLINE` + 两台 Router `6446/6447 ok`。
+
+配套修复：mysql 首次成组前先逐节点 `SET GLOBAL super_read_only=OFF`——单主 MGR 重启后节点
+带 `super_read_only=ON` 回来（运行时值，不落 `mysqld-auto.cnf`），而成组前必须建 `repl` 用户，
+不解就撞 `ERROR 1290`。**只在首次成组分支解**："已成组"分支里 SECONDARY 的只读就是单主语义本身。
 
 ---
 
@@ -297,7 +333,9 @@ docker exec mysql-1 mysql -h172.28.4.31 -P6447 -uroot -p"$MYSQL_ROOT_PASSWORD" -
 | `mysqld` 起不来，日志 `unknown variable 'group_replication_group_name'` | `--initialize` 阶段 GR 插件还没加载；所有 GR 变量加 `loose_` 前缀 |
 | 日志 `Unable to lock ./ibdata1` | 上一次初始化中断留下的半成品；`stack-reset` 后重来 |
 | `mysqladmin ping` 失败但进程在 | 镜像默认走 socket；健康检查与脚本都加 `-h127.0.0.1`（`status.sh` 曾漏掉，自己报 ERROR 2002） |
-| Docker daemon 重启后三台都 `Up` 但 MGR 全 `OFFLINE` | 预期：`group_replication_start_on_boot=OFF` 是防裂脑的设计，不会自动成组；`make stack-up S=mysql MODE=ha` 重跑 `bootstrap.sh`（幂等，只补离队节点）。下游 nacos 会因此 crash loop，先修 mysql 再修 nacos（plan §8.4） |
+| Docker daemon 重启 / 全量 `down` 后三台都 `Up` 但 MGR 全 `OFFLINE` | 预期：`group_replication_start_on_boot=OFF` 是防裂脑的设计，不会自动成组。`make stack-up S=mysql`（省略 MODE 即沿用 ha）重跑 `bootstrap.sh`：因为**没有任何节点是 ONLINE**，走的是"首次成组"分支（清 GTID → 重建组 → join → adoptFromGR/rescan），不是"只补离队节点"；数据保留。两段式启动（DEC-52）保证这一步真能跑到。下游 nacos 会因此 crash loop，先修 mysql 再修 nacos（plan §8.4） |
+| `bootstrap.sh` 在 `configuring recovery channel` 就退出（输出里没有错误行） | `sql()` 里 `2>/dev/null` 吞掉了 stderr，实际是 `ERROR 1290 ... --super-read-only`：重启后节点带只读回来而成组前必须建 `repl` 用户。已由首次成组分支前的 `SET GLOBAL super_read_only=OFF` 修掉（DEC-52） |
+| `mysql-router-*` 一直 `unhealthy` | 健康检查是 `exec 3<>/dev/tcp/127.0.0.1/6446`（只有 bash 支持），而 Router 只在 MGR 有 ONLINE primary 时才监听 6446 —— 先查成员表而不是 Router 本身 |
 | Router 报 `One can only use the -u/--user switch if running as root` | 镜像以 uid 999 运行；去掉 `--user=root`，把 `data/mysql-router-*` chmod 0777 |
 | Router 起不来，缺 `mysql_innodb_cluster_metadata` | 静态路由不依赖 AdminAPI 元数据；本仓库不用 `mysqlrouter --bootstrap`（偏差见 pending-decisions） |
 | 组复制成员 `ERROR` 后反复重试 | 先 `stack-reset S=mysql MODE=ha`，不要在半死集群上手工 `START GROUP_REPLICATION` |
@@ -453,7 +491,8 @@ curl -s http://172.28.12.11:9090/api/v1/targets?state=active | head -c 200
 curl -s http://172.28.12.11:9090/-/ready
 ```
 
-全栈实测：33 targets / 33 up / 0 down。
+全栈实测（18 个 profile 全起）：**30 targets / 30 up / 0 down**。目标数随形态变
+（consul solo=1 / ha=3），所以**不要把绝对数字当断言**，只断言 `down=0`。
 
 目标按**各栈当前部署形态**过滤（读 `.mode-<profile>` marker，DEC-47）：consul 跑 solo 时
 只出 `.11`，不会把 `consul-2/3` 长期报成 down。改了某栈形态后要 `make render` +

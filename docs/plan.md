@@ -14,7 +14,8 @@
 > 经 `docsify.localhost` 从宿主访问；无状态纯浏览，HA 豁免（DEC-46）。
 > **v4.5 不改范围，只改"能不能相信绿色"**：抓取目标按已部署形态过滤（DEC-47）、doctor 增加
 > 运行态第 15 项与 daemon 重启恢复口径（DEC-48）、sentinel 口不再进指标（DEC-49）、
-> 单栈命令 MODE 缺省沿用当前部署形态（DEC-50）。
+> 单栈命令 MODE 缺省沿用当前部署形态（DEC-50）、工具链与依赖由 `mise.toml` + `.venv` 固定（DEC-51）、
+> `stack-up` 改为「起容器 → bootstrap → 等健康」两段式（DEC-52）。
 > 缩容期的文档归档在 `docs/archive/plan-v3.2-redis-only.md`，13 域时代的原始设计在 `docs/archive/plan-v2.3-13stacks.md`。
 
 ---
@@ -48,7 +49,7 @@
 | **v4.2** | v4.1 − **mailpit / adminer / minio**（三个接入面工具），edge 只留 nginx | 26 / 69 | 5.1 / 14.5 GB | 去掉无消费者与可替代的工具；全量 ha 回到 15.7 GB 以内 |
 | **v4.3** | v4.2 + **Nacos 升 3.x**：`nacos-server`×3 + **`nacos-console`×1**（控制台独立端口 8080），schema 用 3.x 脚本 | **27 / 70** | **5.3 / 14.7 GB** | 跟官方 3.x 的 server/console 拆分；端口表、路由、身份清单、probe 全部按 3.x 更新 |
 | **v4.4（上一版）** | v4.3 + **第 15 域 `.20.x` docsify**（`docsify-1`×1，仓库 `docs/` 只读浏览，`docsify.localhost`） | **28 / 71** | **5.35 / 14.75 GB** | 文档从"打开文件读"变成"站点读"；无状态、HA 豁免，只增 1 容器 / 0.05 GB |
-| **v4.5（本版）** | 范围不变；**观测与体检口径修正**：抓取目标按已部署形态过滤（DEC-47）、doctor 第 15 项运行态健康 + daemon 重启恢复口径（DEC-48）、sentinel 口不进指标（DEC-49）、`stack.sh` 的 MODE 缺省改为沿用当前部署形态（DEC-50） | 28 / 71（不变） | 5.35 / 14.75 GB（不变） | 从"全停也能绿"变成"绿了才算真跑起来"；假 down / 假 `redis_up 0` / 面板未 provision / ha 部署被当 solo 查，四类"看起来正常"均被消除 |
+| **v4.5（本版）** | 范围不变；**观测与体检口径修正 + 工具链固定**：抓取目标按已部署形态过滤（DEC-47）、doctor 第 15 项运行态健康 + daemon 重启恢复口径（DEC-48）、sentinel 口不进指标（DEC-49）、`stack.sh` 的 MODE 缺省改为沿用当前部署形态（DEC-50）、Python 由 `mise.toml` + 仓库内 `.venv` 固定（DEC-51）、`stack-up` 两段式启动让恢复口径真能重放（DEC-52） | 28 / 71（不变） | 5.35 / 14.75 GB（不变） | 从"全停也能绿"变成"绿了才算真跑起来"；假 down / 假 `redis_up 0` / 面板未 provision / ha 部署被当 solo 查 / 换个 shell 就选错解释器 / "重跑 stack-up 即恢复"对 mysql 名实不符，六类"看起来正常"均被消除 |
 
 > v3.0 缩容的直接代价是"无法验证跨组件交互"（缓存↔DB、消息堆积→缓存回填），v4.0 把该能力恢复；
 > 代价是内存重回 14.7 GB / 可见 15.7 GB —— 六档纪律（§9.1）与 §9.2 限流重新变成硬约束。
@@ -739,7 +740,7 @@ services/redis/
 ### 8.1 统一命令
 
 ```bash
-make stack-up S=kafka      # render → compose --profile kafka up -d → 等 healthy → bootstrap
+make stack-up S=kafka      # render → compose --profile kafka up -d → bootstrap → 等 healthy（DEC-52）
 make stack-status S=kafka
 make stack-reset S=kafka
 
@@ -814,10 +815,20 @@ OrbStack / 宿主重启
 
 ```bash
 make doctor                              # 第 15 项会直接报出哪些容器在 crash loop / 没在跑
-make stack-up S=mysql MODE=ha       # bootstrap 重成 MGR + 重建 nacos_config + reload router
-make stack-up S=nacos MODE=ha       # 库好了才能起；依赖链见 R25
-make tier-s                             # 或者按档一键重放（该档已部署的栈都会重跑一遍 bootstrap）
+make stack-up S=mysql                    # 省略 MODE 即沿用 ha（marker，DEC-50）：重成 MGR + 重建 nacos_config + router 接管
+make stack-up S=nacos                    # 库好了才能起；依赖链见 R25
+make tier-s                              # 或者按档一键重放（该档已部署的栈都会重跑一遍 bootstrap）
 ```
+
+> 该口径在 v4.5 之前对 mysql 是**假**的，一次全量 `down` 后复现出两道坑（DEC-52）：
+> ① `stack-up` 旧顺序是 `up -d --wait` 再 `bootstrap`，而 `--wait` 要等 Router 健康；
+> Router 只在 metadata cache 看到 ONLINE primary 后才监听 6446 —— 成组本来就是 bootstrap 的
+> 职责，于是 `--wait` 超时失败 → bootstrap 永远轮不到（实测三个节点停在 `OFFLINE`、两台 Router
+> `unhealthy`、下游 nacos 跟着 crash loop）。② 解锁后 bootstrap 走到"首次成组"分支时，`CREATE
+> USER 'repl'` 直接撞 `ERROR 1290`：单主 MGR 重启后节点带 `super_read_only=ON` 回来（运行时值，
+> 不落 `mysqld-auto.cnf`），而成组前必须建 repl 用户。
+> 现在：`up` / `reset` 均为两段式（起容器 → bootstrap → 等健康），且成组前先 `SET GLOBAL
+> super_read_only=OFF`（join 后 MGR 会把 SECONDARY 置回 ON，不破坏单主语义）。
 
 设计决定：**不把 start_on_boot 改成 ON**。自动成组在单机重启场景下看似方便，但它会让
 "手工 bootstrap 才能建组"这条防裂脑约束失效（DEC-8 / DEC-17 同一取向）；正确的补偿是**可观察**
@@ -960,6 +971,8 @@ redis_exporter: oliver006/redis_exporter:v1.67.0  # X.Y.Z：小版本会改指�
 | **DEC-48** | **doctor 增加第 15 项「运行态健康」**，并把"Docker daemon 重启后必须重跑 `make stack-up`（或 `make tier-*`）才能恢复集群不变量"写成正式口径（§6.3 / §8.4 / stacks.md 全局约定） | 真实事故链：daemon 重启 → `restart: unless-stopped` 只复活容器 → mysql 因为 `group_replication_start_on_boot=OFF` 停在 OFFLINE → `nacos_config` 库（成组后才建）不存在 → nacos ×3 进 crash loop（restart=50）——而 `make doctor` 当时 **14/14 PASS**。前 14 项全为静态校验，结构性看不见这一层。代价：doctor 从"全停也能绿"变成第 15 项依赖 daemon；已用 WARN（而非 FAIL）包住"未部署/没在跑"，保证没起东西时不会喷 FAIL |
 | **DEC-49** | **redis 的 `/scrape` 中继只列 6379 节点，不列 sentinel（26379）**：`redis_targets()` 跳过 `role=sentinel` | 实测：中继型 exporter 只能带一份全局 `REDIS_PASSWORD`，而 sentinel 自身不设密码（只用 `sentinel auth-pass` 连 master），带密码去连会 AUTH 失败；更坑的是 `up` 仍为 1（中继永远回 200），真正失败的是指标里的 `redis_up 0`——三个 sentinel 存活却长期报 0，与 DEC-47 要消除的假故障同一类（已用一个不带密码的临时 exporter 对照证实：同一 sentinel 目标 `redis_up 1`，加上 `REDIS_PASSWORD` 就变 0）。控制面健康本来就不靠指标：`make stack-status` 比三台 `get-master-addr-by-name` 是否一致，加 `make failover-drill`；主从切换在指标上体现为 `redis_role` 在两个 instance 间互换。代价：拿不到 sentinel 自身的 INFO 指标（想拿要先给 sentinel 设密码，已列为 D37） |
 | **DEC-50** | **`stack.sh` 的 MODE 缺省不再写死 solo，而是读 `.mode-<profile>` marker 沿用当前部署形态**（无 marker = 从没部署过才回退 solo） | 实测：`make stack-status S=mysql`（Makefile 旧默认 `MODE=solo`）在一个 **ha 部署**上走的是 solo 分支，打 `@@server_id / @@gtid_mode / @@version` 而**不是** MGR 成员表——看起来输出了东西、实际验的是另一个形态，跟 DEC-48 要消除的"绿色说谎"同类。marker 是唯一事实源（DEC-47/48 已用），`deployed_mode <profile> [fallback]` 加一个可选回退参数而不是再造一份读取逻辑。附带收益：DEC-48 的恢复口径"重跑 `make stack-up`"不带 MODE 时不会再把 ha 部署静默改成 solo。代价：`make stack-up S=<p>` 省略 MODE 的语义从"起 solo"变成"沿用当前形态"（要显式换形态必须写 `MODE=solo\|ha`），脚本每次会打印 `# MODE 未指定 -> <mode>` 以免误以为还是旧默认 |
+| **DEC-51** | **工具链与依赖不进宿主：`mise.toml`（入库输入）钉 `python = "3.12"`，依赖只装仓库内 `.venv/`（生成物，gitignore），`make setup` 一键重建**；Makefile 前置 `.venv/bin` 到 PATH，`scripts/lib.sh` 同效（覆盖不走 make 的直接调用） | 直接诱因：一次 `make render` / `stack-up` 报 `ModuleNotFoundError: No module named 'yaml'`。根因不是版本旧，而是**宿主同时存在三个 `python3`**（uv 的 3.12 / mise 的 shims / Apple 的 `/usr/bin/python3` 3.9.6），而 `.zshrc` 把 `~/.local/bin` 前置在 `mise activate` **之后**，于是交互式 zsh 与 `bash -lc` / cron / IDE Run Config 解析到不同解释器（实测：`zsh -ic` 得 3.12，`zsh -lc` / `bash -lc` / `env -i` 得 3.9.6）。"升级系统 Python"不是选项：`/usr/bin/python3` 由 Apple 随 Command Line Tools 分发（root:wheel、SIP 保护，下次 CLT 更新会覆盖）。选 mise 而非手建 venv：宿主已用 mise 管 go/golangci-lint/lefthook（既有约定优先），且 mise 的 python 是预编译包（`cpython-3.12.15+…-install_only_stripped.tar.gz`，实测 13.5 s 装好，与 uv 同源）。代价：多一个根级输入文件 `mise.toml` 与一个生成物 `.venv/`；`make setup` 成为首次与换机器的必填项；宿主没装 mise 时需要提示（脚本已回退宿主 `python3`，不会硬坏）；另外要回收本轮临时用 `--break-system-packages` 塞进解释器的 PyYAML |
+| **DEC-52** | **`stack.sh` 的 `up` / `reset` 改为两段式：`up -d`（不等健康）→ `bootstrap` → `up -d --wait`**；同时 mysql 的 `bootstrap.sh` 在首次成组前先解开 `super_read_only` | 真实事故链（一次全量 `down` 后按§8.4 口径恢复）：`mysql-router-1/2` 一直 `unhealthy` → `up -d --wait` 超时失败 → **`bootstrap` 根本没执行** → MGR 停在 `OFFLINE`。根因是顺序死锁：`--wait` 要等 Router 健康，Router 只在 metadata cache 里看到 ONLINE primary 才监听 6446，而成组本来就是 bootstrap 的职责 —— "先等健康再引导"对**任何一个需要 bootstrap 才转健康的栈**都是死循环（DEC-48 写的"重跑 `make stack-up` 即恢复"对 mysql 名实不符）。bootstrap 自己带就绪轮询（各栈 20–60 次），所以第一段不等健康是安全的；第二段才把"真的健康"作为终态。第二道坑：解锁后 `CREATE USER 'repl'` 报 `ERROR 1290`，单主 MGR 重启后节点带 `super_read_only=ON` 回来（运行时值，不落 `mysqld-auto.cnf`），而在成组前必须建 repl 用户；首次成组分支里逐节点 `SET GLOBAL super_read_only=OFF`（只在这个分支！"已成组"分支里 SECONDARY 的只读是单主语义本身，不能解）。实测（`stack.sh rm mysql ha` 后重建容器）11.7 s：MGR 3 `ONLINE`（1P2S）+ 两台 Router `6446/6447 ok`，`nacos_config` 的 10 张表完好 |
 
 ### 11.2 历史（已被取代，留档）
 
@@ -1001,7 +1014,7 @@ redis_exporter: oliver006/redis_exporter:v1.67.0  # X.Y.Z：小版本会改指�
 | R26 | Nacos 的 gRPC（9848/9849）**不经 nginx** | 容器/宿主能连 8848 却连不上 9848 → 客户端注册成功但推送失败 | 客户端配置节点固定 IP（DEC-3 前提）；`nginx` 只代理控制台；换运行时见 R1 |
 | R27 | **删掉 mailpit / minio 后的能力缺口**：没有邮件外发通道、没有 S3 兼容存储 | 告警只能看 AM UI；应用若需要对象存储则没地方放 | 告警改用 `receivers: nul`（Grafana/AM UI 查看）；对象存储需要时按 §17 追加（N12） |
 | R28 | **Nacos 3.x 与 2.x 不兼容**：控制台端口、schema、鉴权默认值都可能不同；3.x 资料较新 | 按 2.x 经验配 → 控制台打不开 / 建表冲突 / 客户端 403 | P5 首次启动锁定四项并写进 `docs/stacks.md`：console 是否独立镜像与端口、health/metrics 路径、3.x schema 文件名、鉴权是否默认开启；`backup-all` 不跨大版本恢复（R3） |
-| R29 | **宿主 / Docker daemon 重启后集群不变量不恢复**（MGR `start_on_boot=OFF`、Patroni/DLedger 需重加入），而 `restart` 只复活容器 → 跨栈依赖（nacos→mysql）连环 crash loop | 重启后"看起来全在跑"，实际集群未成组、上层栈持续重启 | §8.4 恢复口径（按依赖顺序重跑幂等的 `make stack-up`）；§6.3 第 15 项把运行态纳入体检（crash loop = FAIL，已部署未跑 = WARN）；DEC-48 |
+| R29 | **宿主 / Docker daemon 重启后集群不变量不恢复**（MGR `start_on_boot=OFF`、Patroni/DLedger 需重加入），而 `restart` 只复活容器 → 跨栈依赖（nacos→mysql）连环 crash loop | 重启后"看起来全在跑"，实际集群未成组、上层栈持续重启 | §8.4 恢复口径（按依赖顺序重跑幂等的 `make stack-up`）；§6.3 第 15 项把运行态纳入体检（crash loop = FAIL，已部署未跑 = WARN）；DEC-48；两段式启动 + 解只读让这条口径真能重放（DEC-52） |
 
 > 编号 R9（MinIO 一致性）、R20（缩容期"覆盖不足"）、R21（Redis 单机 maxmemory）已随范围调整移除；编号不复用，避免与历史文档/提交记录错位。
 

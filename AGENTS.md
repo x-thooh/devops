@@ -27,6 +27,7 @@
 | 路径 | 角色 | 规则 |
 |---|---|---|
 | `stock/network.ini` | **IP / 端口 / 角色 / mode / 路由 的唯一权威** | 新增栈、改 IP、加路由**只能改这里** |
+| `mise.toml` | 工具链唯一入口（`python = "3.12"`） | 解释器版本**只能**改这里，不要去改脚本里的 `python3` 调用（DEC-51） |
 | `base/network.yml` | `devnet` 网段 | 全仓库唯一出现 `subnet:` 的地方 |
 | `base/anchors.yml` | `logging` / `restart` / `TZ` / 健康检查默认 | 组件里出现同类字段 = 打回 |
 | `base/images.yml` | 镜像唯一清单（官方源，`.env` 可覆盖） | compose 内禁止字面量 `image:` |
@@ -34,11 +35,12 @@
 | `services/<stack>/compose.yml` | **手写骨架**（输入，入库） | 只写 `services` / `container_name` / `profiles` / `volumes` / `healthcheck` / `x-image`；禁止 `image` / `restart` / `logging` / `networks` / `TZ` |
 | `services/<stack>/config/` | 配置**模板**（入库） | 只放模板，`render.sh` 产物不许写进来 |
 | `services/<stack>/data/` | 运行时状态（gitignore） | 永不入库；`**/data/**` 一条规则覆盖 |
+| `.venv/` | 仓库内 Python 环境（生成物） | `make setup` 重建；依赖**不得**装进宿主解释器（DEC-51） |
 | `.generated/<stack>.yml` | 单栈渲染结果（生成物） | 不提交；`render-all.py` 每次覆盖 |
 | `compose.yml`、`compose.generated.yml` | 根聚合入口（生成物，两份同内容） | 手改无效，`render-all.sh` 会覆盖；不提交 |
 | `services/nginx/data/conf.d/`、`*/data/**/prometheus.yml`、`sentinel.conf`、`nodes.conf` | 渲染产物 / 运行时重写 | 手改会被下一次 render 或重启冲掉 |
 
-> **一句话**：`ini`、`base/`、`services/*/compose.yml` 与 `config/` 是输入；`.generated/`、根 `compose*.yml` 与 `data/` 是输出。只改输入。
+> **一句话**：`ini`、`base/`、`mise.toml`、`services/*/compose.yml` 与 `config/` 是输入；`.generated/`、根 `compose*.yml`、`.venv/` 与 `data/` 是输出。只改输入。
 
 ---
 
@@ -76,6 +78,7 @@
 ## 4. 常用命令（P0 已可用）
 
 ```bash
+make setup                # 首次 / 换机器必跑：mise 定 python 3.12 + 建 .venv + 装 PyYAML
 make secrets                # 生成 env/.env（已存在则不动）
 make doctor                 # 15 项体检；按"已启用的栈"取集合（第 15 项看运行态）
 make render                 # ini → compose.generated.yml + 各栈配置
@@ -93,6 +96,7 @@ make trace-demo             # 推一条 OTLP trace 给 jaeger
 > `S` 填的是**部署单元名（profile）**，不是目录名：`redis` 目录下是 `redis-sentinel` / `redis-cluster`，**没有 `S=redis`**。
 >
 > `MODE` 省略时**不是 solo**：`stack.sh` 读 `.mode-<profile>` marker 沿用当前部署形态，从没部署过才回退 solo，并打印 `# MODE 未指定 -> <mode>`（DEC-50）。要换形态必须显式写 `MODE=solo|ha`。
+> `stack-up` / `stack-reset` 是**两段式**：起容器 → `bootstrap` → 再等健康（DEC-52）——需要先 bootstrap 才转健康的栈（mysql 的 Router）若先 `--wait` 就永远等不到。
 
 ---
 
@@ -114,7 +118,7 @@ make trace-demo             # 推一条 OTLP trace 给 jaeger
 
 - **语言**：中文；表格优先；章节引用一律用 `§x.y`，引用前确认目标章节存在（当前 §0–§17）。
 - **编号只增不复用**：
-  - ADR `DEC-1` … `DEC-50`（顺序即时间顺序）；
+  - ADR `DEC-1` … `DEC-52`（顺序即时间顺序）；
   - 风险 `R-n`（R9/R20/R21 已随范围删除，编号留空不复用）；
   - 决策 `D-n` / `F-n` / `N-n`（D 可作废但不重编号，如 D17）。
 - **一处决策，三处同步**：`plan §11 ADR` + `pending-decisions`（标 ✅ 已定案）+ 受影响的表格/计数。
@@ -135,6 +139,8 @@ make trace-demo             # 推一条 OTLP trace 给 jaeger
 | 在容器之间用 `*.localhost` | 只有宿主浏览器能解析 |
 | 静默改变已定案（D01/D02/D03/D08/D31 等） | 先改 ADR + pending，再改实现 |
 | 把 `data/`、`.env`、生成物提交进 git | `.gitignore` 已覆盖，提交前 `git status` 自查 |
+| 把 Python 依赖装进宿主解释器（`pip install --break-system-packages` 等） | 宿主同时有 uv / mise / /usr/bin 三个 `python3`，不同 shell 会选不中同一个；依赖只进 `.venv`（`make setup`，DEC-51） |
+| 把 `bootstrap` 排在 `compose up -d --wait` 之后 | 需要先引导才转健康的栈会死锁（实测 mysql：Router 等 MGR 有主，`--wait` 超时又挡住 bootstrap）；`up`/`reset` 均为两段式（DEC-52） |
 
 ---
 
