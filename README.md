@@ -55,6 +55,8 @@ make up            # = make tier-a
 make tier-s        # solo 全栈（未实现的栈自动 skip）
 ```
 
+> 18 个 profile 各自的 solo / ha 成对命令、容器构成与切换注意事项，见 [`docs/quickstart.md`](docs/quickstart.md)。
+
 ## 输入 / 输出契约
 
 | 路径 | 角色 | 提交 |
@@ -68,7 +70,7 @@ make tier-s        # solo 全栈（未实现的栈自动 skip）
 | `services/<stack>/config/` | 配置模板 | 是 |
 | `.generated/<stack>.yml` | 渲染后的单栈 compose | 否 |
 | `compose.generated.yml`、根 `compose.yml` | 聚合入口（同一内容） | 否 |
-| `services/<stack>/data/` | 运行时状态与渲染产物 | 否 |
+| `services/<stack>/.data/` | 运行时状态与渲染产物 | 否 |
 | `.venv/` | 仓库内 Python 环境（`make setup` 重建） | 否 |
 | `env/.env` | 本地密钥与覆盖 | 否 |
 
@@ -86,16 +88,16 @@ make tier-s        # solo 全栈（未实现的栈自动 skip）
 | 命令 | 作用 |
 |---|---|
 | `make setup` | 建 / 修 `.venv`（mise 定版本 + 装 PyYAML）；镜像不通时用 `PIP_INDEX_URL=<mirror>` |
-| `make render` | ini + base + 各栈模板 → 聚合 compose + `data/` 下的真实配置 |
+| `make render` | ini + base + 各栈模板 → 聚合 compose + `.data/` 下的真实配置 |
 | `make doctor` | 15 项体检；失败项按提示修，不要手工绕过 |
 | `make up` / `make down` | 起 / 停当前档位（默认 A） |
 | `make tier-s` … `tier-f` | 档位启动；未实现栈自动跳过 |
 | `make stack-up S=<profile> [MODE=solo\|ha]` | 单栈起停；`S` 是 profile 不是目录；省略 `MODE` 沿用当前形态（DEC-50），顺序是"起容器 → bootstrap → 等健康"（DEC-52） |
 | `make stack-status S=<profile>` | 容器状态 + 栈自带探测；省略 `MODE` 则按当前部署形态（DEC-50） |
-| `make stack-reset S=<profile>` | 停容器 → 删本 profile 的 `data/` 子树 → 重渲染 → 重启 |
+| `make stack-reset S=<profile>` | 停容器 → 删本 profile 的 `.data/` 子树 → 重渲染 → 重启 |
 | `make stack-shell S=<profile> N=<node>` | 进容器 |
 | `make ui-open S=grafana` | 打开 `http://grafana.localhost`（需对应栈已起）；docsify 站点同理 |
-| `make prepull` / `make backup-all` | 预拉镜像 / 归档 `services/*/data` |
+| `make prepull` / `make backup-all` | 预拉镜像 / 归档 `services/*/.data` |
 
 > `S` 填部署单元名：`redis` 目录下是 `redis-sentinel` / `redis-cluster`，**没有 `S=redis`**。
 
@@ -106,7 +108,7 @@ make tier-s        # solo 全栈（未实现的栈自动 skip）
 - `MODE=ha`：`nginx-1` + `nginx-2` 均 healthy；`172.28.0.12/healthz` 返回 200。
 - 容器内 `date` 显示 `CST +0800`。
 - `grafana.localhost` 在观测栈未起时返回 502（不是 404 / 000）。
-- `git status` 不出现 `data/`、`env/.env`、`.generated/`、`.venv/`、根 `compose*.yml`。
+- `git status` 不出现 `.data/`、`env/.env`、`.generated/`、`.venv/`、根 `compose*.yml`。
 - 全量 `down` 后按依赖重跑 `make stack-up`：`S=mysql` 应在十几秒内回到 MGR 3 `ONLINE` +
   两台 Router `6446/6447 ok`（两段式启动保证 bootstrap 真能跑到，DEC-52）。
 
@@ -130,8 +132,8 @@ make tier-s        # solo 全栈（未实现的栈自动 skip）
 ```text
 base/          共享不变量（network / anchors / images / jvm）
 stock/         network.ini（唯一权威）
-services/      各栈骨架、模板、脚本；data/ 为运行时产物
+services/      各栈骨架、模板、脚本；.data/ 为运行时产物
 scripts/       ini 解析、渲染、doctor、stack/tier 操作
 .env（本地）   入口端口、镜像覆盖、凭据；由 scripts/gen-secrets.sh 生成
-docs/          plan.md（设计源）、stacks.md（每期沉淀）、pending-decisions.md
+docs/          plan.md（设计源）、quickstart.md（逐栈起停速查）、stacks.md（每期沉淀）、pending-decisions.md
 ```
