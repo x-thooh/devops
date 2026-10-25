@@ -10,7 +10,14 @@ MODE="${2:-solo}"
 set -a; source "${DEVOPS_ROOT}/env/.env"; set +a
 PASS="${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD missing in env/.env}"
 
-docker exec rabbit-1 rabbitmqctl -q await_startup >/dev/null 2>&1 || true
+# 就绪关口：await_startup 必须真正成功才能跑后续 rabbitmqctl（否则 Erlang 节点未起，
+# list_users/add_user 会撞 "unable to perform an operation on node" 并被 set -e 打断）。
+for _ in $(seq 1 30); do
+    if docker exec rabbit-1 rabbitmqctl -q await_startup >/dev/null 2>&1; then
+        break
+    fi
+    sleep 2
+done
 
 if ! docker exec rabbit-1 rabbitmqctl -q list_users 2>/dev/null | cut -f1 | grep -qx devops; then
     docker exec rabbit-1 rabbitmqctl -q add_user devops "${PASS}" >/dev/null
