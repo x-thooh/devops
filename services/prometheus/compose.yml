@@ -1,0 +1,22 @@
+# 手写骨架：不写 image / logging / restart / TZ / networks / IP
+# solo：prometheus-1；ha：prometheus-2 冗余采集（拉模式无共识，各自本地 TSDB）
+services:
+  prometheus-1:
+    x-image: prometheus
+    profiles: ["prometheus"]
+    container_name: prometheus-1
+    entrypoint: ["/bin/sh", "/data/active/prometheus-1/entry.sh"]
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9090/-/ready >/dev/null"]
+
+  prometheus-2:
+    x-image: prometheus
+    profiles: ["prometheus"]
+    container_name: prometheus-2
+    entrypoint: ["/bin/sh", "/data/active/prometheus-2/entry.sh"]
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9090/-/ready >/dev/null"]

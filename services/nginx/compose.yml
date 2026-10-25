@@ -1,0 +1,24 @@
+# 手写骨架：不写 image / logging / restart / TZ / networks / IP
+# 这些由 scripts/render-all.py 从 base/ 与 stock/network.ini 注入到 .generated/nginx.yml
+services:
+  nginx-1:
+    x-image: nginx
+    profiles: ["nginx"]
+    container_name: nginx-1
+    ports:
+      - "${ENTRY_HTTP_PORT:-80}:80"
+    volumes:
+      - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./data/conf.d:/etc/nginx/conf.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz || exit 1"]
+
+  nginx-2:
+    x-image: nginx
+    profiles: ["nginx"]
+    container_name: nginx-2
+    volumes:
+      - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./data/conf.d:/etc/nginx/conf.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz || exit 1"]

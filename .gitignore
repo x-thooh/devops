@@ -1,10 +1,20 @@
-# 运行时数据（plan §4 / DEC-10）
-**/data/
+# 运行时数据（plan §4 / DEC-10）：忽略内容但保留顶层 .gitkeep
+**/data/**
 !**/data/.gitkeep
 
 # 密钥与本地覆盖（plan §4）
 env/.env
 
+# 生成物（只改输入：ini / base/ / services/*/compose.yml）
+/.generated/
+/compose.generated.yml
+/compose.yml
+/backups/
+
 # 编辑器 / 系统噪音
 .idea/
 .DS_Store
+
+# Python 字节码缓存（scripts/*.py 运行期生成，非输入）
+__pycache__/
+*.pyc

@@ -1,0 +1,10 @@
+# 手写骨架：不写 image / logging / restart / TZ / networks / IP
+# 单实例（存储侧豁免）：Badger 单写者；OTLP 收 + 本地存储 + 查询 UI
+services:
+  jaeger:
+    x-image: jaeger
+    profiles: ["jaeger"]
+    container_name: jaeger
+    command: ["--config", "/data/active/jaeger/config.yml"]
+    volumes:
+      - ./data:/data

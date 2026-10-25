@@ -1,7 +1,7 @@
-# devops 本地多栈测试环境 · 总体方案 v4.3（14 域，按组件拆目录）
+# devops 本地多栈测试环境 · 总体方案 v4.5（15 域，按组件拆目录）
 
-> 单机（macOS + OrbStack）承载 **14 个 IP 域 / 16 个组件目录 / 17 个部署单元**：
-> **solo 形态**（单节点，日常调试）与 **ha 形态**（集群/主从，验证台架，≈ 70 容器）双轨并存，
+> 单机（macOS + OrbStack）承载 **15 个 IP 域 / 17 个组件目录 / 18 个部署单元**：
+> **solo 形态**（单节点，日常调试）与 **ha 形态**（集群/主从，验证台架，≈ 71 容器）双轨并存，
 > 全部同一网络且各带固定 IP，配置与运行时数据全部位于本仓库，
 > **每个组件（除明确豁免的工具类）的 ha 形态都具备集群或主从**，
 > 并统一经 `<服务>.localhost` 子域从宿主访问（§15），指标汇入可观测性域（§16）。
@@ -10,6 +10,11 @@
 > **v4.1 新增第 14 域 Nacos**（服务注册 + 配置中心，3 节点 + 复用 mysql 栈的库）；
 > **v4.2 移除三件接入面工具**（mailpit / adminer / minio），edge 域只保留 nginx：
 > 每个产品一个目录（`redis` 是唯一按 §2.1 复合的四条硬条件合并的目录），入口/工具不再挤在 `core/` 里。
+> **v4.4 启用第 15 域 `.20.x` docsify**（§17 预留块的第一个）：把仓库 `docs/` 变成可浏览站点，
+> 经 `docsify.localhost` 从宿主访问；无状态纯浏览，HA 豁免（DEC-46）。
+> **v4.5 不改范围，只改"能不能相信绿色"**：抓取目标按已部署形态过滤（DEC-47）、doctor 增加
+> 运行态第 15 项与 daemon 重启恢复口径（DEC-48）、sentinel 口不再进指标（DEC-49）、
+> 单栈命令 MODE 缺省沿用当前部署形态（DEC-50）。
 > 缩容期的文档归档在 `docs/archive/plan-v3.2-redis-only.md`，13 域时代的原始设计在 `docs/archive/plan-v2.3-13stacks.md`。
 
 ---
@@ -41,7 +46,9 @@
 | **v4.0** | **13 域全量恢复**，并按 v3.x 的组件化规则重排：18 目录 / 19 部署单元 / +jaeger | 28 / 72 | 5.2 / 14.6 GB | 回到"多组件验证台架"，但目录结构与拆分判据统一 |
 | **v4.1** | v4.0 + **Nacos 域**（`.13.x`，3 节点；配置存 mysql 栈） | 29 / 75 | 5.6 / 15.8 GB | 补上服务注册/配置中心 |
 | **v4.2** | v4.1 − **mailpit / adminer / minio**（三个接入面工具），edge 只留 nginx | 26 / 69 | 5.1 / 14.5 GB | 去掉无消费者与可替代的工具；全量 ha 回到 15.7 GB 以内 |
-| **v4.3（本版）** | v4.2 + **Nacos 升 3.x**：`nacos-server`×3 + **`nacos-console`×1**（控制台独立端口 8080），schema 用 3.x 脚本 | **27 / 70** | **5.3 / 14.7 GB** | 跟官方 3.x 的 server/console 拆分；端口表、路由、身份清单、probe 全部按 3.x 更新 |
+| **v4.3** | v4.2 + **Nacos 升 3.x**：`nacos-server`×3 + **`nacos-console`×1**（控制台独立端口 8080），schema 用 3.x 脚本 | **27 / 70** | **5.3 / 14.7 GB** | 跟官方 3.x 的 server/console 拆分；端口表、路由、身份清单、probe 全部按 3.x 更新 |
+| **v4.4（上一版）** | v4.3 + **第 15 域 `.20.x` docsify**（`docsify-1`×1，仓库 `docs/` 只读浏览，`docsify.localhost`） | **28 / 71** | **5.35 / 14.75 GB** | 文档从"打开文件读"变成"站点读"；无状态、HA 豁免，只增 1 容器 / 0.05 GB |
+| **v4.5（本版）** | 范围不变；**观测与体检口径修正**：抓取目标按已部署形态过滤（DEC-47）、doctor 第 15 项运行态健康 + daemon 重启恢复口径（DEC-48）、sentinel 口不进指标（DEC-49）、`stack.sh` 的 MODE 缺省改为沿用当前部署形态（DEC-50） | 28 / 71（不变） | 5.35 / 14.75 GB（不变） | 从"全停也能绿"变成"绿了才算真跑起来"；假 down / 假 `redis_up 0` / 面板未 provision / ha 部署被当 solo 查，四类"看起来正常"均被消除 |
 
 > v3.0 缩容的直接代价是"无法验证跨组件交互"（缓存↔DB、消息堆积→缓存回填），v4.0 把该能力恢复；
 > 代价是内存重回 14.7 GB / 可见 15.7 GB —— 六档纪律（§9.1）与 §9.2 限流重新变成硬约束。
@@ -60,7 +67,7 @@
 | `include` + `profiles` 透传 | ✅ 无 profile 时服务为空 | 组件文件必须自带 `profiles` |
 | 组件内 `./data`、`./config` 相对路径基准 | ✅ 以**组件文件所在目录**为基准 | 组件可整体搬迁，高内聚成立 |
 | 物理内存 / CPU | 48 GB / 14 core | — |
-| Docker VM 可见内存 | **15.7 GB** | 全量 ha **14.7 GB**（余量 ≈ 1.0 GB）→ 装得下，但**仍禁止常驻**（§9.1） |
+| Docker VM 可见内存 | **15.7 GB** | 全量 ha **14.75 GB**（余量 ≈ 0.95 GB）→ 装得下，但**仍禁止常驻**（§9.1） |
 
 > ⚠️ 前提声明：宿主免端口映射依赖 OrbStack 的容器 IP 路由（`docker.expose_ports_to_lan: true`）。
 > 换到 Colima / Docker Desktop 默认配置时，**Sentinel 公告的主节点 IP、Cluster 的 `nodes.conf` 地址、Patroni/MySQL Router 的选主地址、Kafka 的 `advertised.listeners`** 都会失效（§13 R1）。
@@ -81,12 +88,12 @@
 
 | 层 | 单位 | 数量 | 决定什么 |
 |---|---|---|---|
-| 域（domain） | `/24` IP 块 | 14 | IP 段分配；域内组件共享网关与尾号约定 |
-| **组件目录（stack dir）** | `services/<name>/` | **16** | 配置 / 脚本 / 数据的**物理归属**（删栈 = `rm -rf` 一个目录） |
-| **部署单元（profile）** | `compose.yml` 里的一组 `profiles` | **17** | 起停 / 重置 / 形态切换的最小单位 |
-| 容器（container） | service | 27 / 70 | 进程与资源占用（solo / ha） |
+| 域（domain） | `/24` IP 块 | 15 | IP 段分配；域内组件共享网关与尾号约定 |
+| **组件目录（stack dir）** | `services/<name>/` | **17** | 配置 / 脚本 / 数据的**物理归属**（删栈 = `rm -rf` 一个目录） |
+| **部署单元（profile）** | `compose.yml` 里的一组 `profiles` | **18** | 起停 / 重置 / 形态切换的最小单位 |
+| 容器（container） | service | 28 / 71 | 进程与资源占用（solo / ha） |
 
-16 个目录 → 17 个部署单元，因为 `services/redis/` 是**复合栈**（一个目录两组互斥 profile）。
+17 个目录 → 18 个部署单元，因为 `services/redis/` 是**复合栈**（一个目录两组互斥 profile）。
 
 **拆分判据（默认拆目录）**：一个目录 = **一个可独立起停、独立重置、独立切 solo/ha 的部署单元**，且配置格式与状态生命周期不与他者耦合。
 
@@ -124,7 +131,7 @@ networks:
           gateway: 172.28.0.1
 ```
 
-### 3.2 块号 = 域号（14 块全部启用）
+### 3.2 块号 = 域号（15 块已启用）
 
 | 块 | 域 | 块 | 域 |
 |---|---|---|---|
@@ -135,10 +142,11 @@ networks:
 | `172.28.4.0/24` | mysql | `172.28.11.0/24` | nats |
 | `172.28.5.0/24` | mongo | `172.28.12.0/24` | **observability**（四栈共享） |
 | `172.28.6.0/24` | kafka | `172.28.13.0/24` | **nacos** |
-| | | `172.28.20–29.0/24` | 预留 |
+| | | `172.28.20.0/24` | **docsify**（§17 预留块 `.20–.29` 首个启用） |
+| | | `172.28.21–29.0/24` | 预留 |
 | `172.28.99.0/24` | 一次性/工具容器 | | |
 
-### 3.3 块内尾号约定（14 域统一）
+### 3.3 块内尾号约定（15 域统一）
 
 | 尾号 | 角色 |
 |---|---|
@@ -150,7 +158,7 @@ networks:
 | `.51–.59` | 临时客户端（redis-cli、kafka CLI、benchmark） |
 
 > **域 ≠ 组件**：域是 **IP 划分单位**（`/24`），可以含 1 个组件，也可以含多个；组件是 **目录/部署单元**单位。
-> v4.2 之后只剩 **1 个功能域**（其余 13 个都是单组件域）：
+> v4.4 之后只剩 **1 个功能域**（其余 14 个都是单组件域）：
 >
 > | 功能域 | 成员（组件目录） | 共享理由 |
 > |---|---|---|
@@ -167,7 +175,7 @@ devops/
 ├── compose.yml                     # 唯一入口（生成物，见 §10）
 ├── compose.generated.yml
 ├── stock/
-│   └── network.ini                 # ★ IP/端口/路由唯一权威（16 目录 / 17 部署单元）
+│   └── network.ini                 # ★ IP/端口/路由唯一权威（17 目录 / 18 部署单元）
 ├── base/
 │   ├── network.yml                 # devnet ipam
 │   ├── anchors.yml                 # x-common：logging/restart/TZ/healthcheck 默认
@@ -271,14 +279,20 @@ devops/
 │   │   │   └── dashboards/{provider.yml, redis-sentinel.json, redis-cluster.json, infra.json, obs-self.json}
 │   │   ├── scripts/{render,status,reset}.sh
 │   │   └── data/grafana/           # grafana.db（SQLite）
-│   └── jaeger/                     # jaeger (.12.32, both)
-│       ├── compose.yml
-│       ├── config/config.yaml      # OTel Collector 格式（OTLP receiver + jaeger_storage）
-│       ├── config/sampling.json    # 采样策略
-│       ├── scripts/{render,bootstrap,status,reset}.sh
-│       └── data/jaeger/badger/     # trace 存储（TTL 72h）
+│   ├── jaeger/                     # jaeger (.12.32, both)
+│   │   ├── compose.yml
+│   │   ├── config/config.yaml      # OTel Collector 格式（OTLP receiver + jaeger_storage）
+│   │   ├── config/sampling.json    # 采样策略
+│   │   ├── scripts/{render,bootstrap,status,reset}.sh
+│   │   └── data/jaeger/badger/     # trace 存储（TTL 72h）
+│   └── docsify/                    # docsify-1 (.20.11, both)：仓库 docs/ 只读浏览，HA 豁免
+│       ├── compose.yml             # 嵌套只读挂载：docs/ → /docs/content；data/site → /docs
+│       ├── config/index.html.tpl   # 站点壳模板（@TITLE@ / @BASEPATH@ 由 render 替换）
+│       ├── config/assets/          # 从镜像 4.4.4 导出的离线前端资产（升版本时重新导出）
+│       ├── scripts/{render,bootstrap,status}.sh   # 无 reset（无状态，走默认清 data/）
+│       └── data/site/              # 生成物：index.html / assets / _sidebar.md
 ├── scripts/
-│   ├── doctor.sh                   # 14 项体检（§6.3）
+│   ├── doctor.sh                   # 15 项体检（§6.3）
 │   ├── render-all.sh               # ini → compose.generated.yml + 各栈配置渲染
 │   ├── backup-all.sh               # find services -name data → 归档
 │   ├── trace-demo.sh               # 推一条 OTLP trace（§16.5）
@@ -292,18 +306,29 @@ devops/
 ```
 
 ```gitignore
-**/data/
+**/data/**
 !**/data/.gitkeep
 env/.env
+/.generated/
+/compose.generated.yml
+/compose.yml
+/backups/
 ```
 
 > **`config/` 只放模板，`render.sh` 的产物一律落 `data/`**（DEC-11）：nginx 的路由 `conf.d/`、prometheus 的 `prometheus.yml`、
 > sentinel 的 `sentinel.conf`、kafka 的 `server.properties`、kafka 的 `meta.properties` 都在 `data/` 下——它们要么运行时重写，要么含渲染出的 IP，不能入库。
 > 每个目录的 `scripts/` 按需裁剪：无状态的栈没有 `bootstrap`（nginx / grafana）。
+>
+> **生成契约（P0 起）**：`services/<stack>/compose.yml` 是**手写骨架**，只写
+> `services` / `container_name` / `profiles` / `volumes` / `healthcheck` 与 `x-image`；
+> `image`、`restart`、`logging`、`TZ`、`networks` / `ipv4_address` 由 `scripts/render-all.py`
+> 从 `base/` 与 `stock/network.ini` 注入。`.generated/<stack>.yml`、根 `compose.yml`、
+> `compose.generated.yml` 都是生成物，不提交；只有 `services/*/compose.yml` 是输入，必须提交。
+> 这样"组件 compose 里出现字面量 `image:`"与"根 `compose.yml` 是生成物"两条规则不再冲突。
 
 ---
 
-## 5. 服务花名册（14 域 / 16 目录 / 17 部署单元）
+## 5. 服务花名册（15 域 / 17 目录 / 18 部署单元）
 
 > 内存为"限堆/限缓存后"稳态估算，非默认值（默认值会 OOM，见 §9.2）。
 
@@ -326,7 +351,8 @@ env/.env
 | `.12.x` obs | `grafana` | grafana | 面板（provisioning） | 0.25 / 0.25 GB |
 | `.12.x` obs | `jaeger` | jaeger | 链路追踪（OTLP + Badger + UI） | 0.15 / 0.15 GB |
 | `.13.x` nacos | `nacos` | server 1 + console 1 → server×3 + console×1 | 服务注册 + 配置中心（3.x server/console 拆分；库复用 mysql 栈） | 0.55 / 1.35 GB |
-| **合计** | **16 目录 / 17 单元** | **27 → 70 个容器** | | **5.3 / 14.7 GB** |
+| `.20.x` docs | `docsify` | docsify-1（两形态同一节点） | 仓库 `docs/` 只读浏览（无状态，HA 豁免，DEC-46） | 0.05 / 0.05 GB |
+| **合计** | **17 目录 / 18 单元** | **28 → 71 个容器** | | **5.35 / 14.75 GB** |
 
 > `redis-sentinel` 与 `redis-cluster` **同属 `services/redis/`**（复合栈，§2.1），两个 profile 互斥；
 > 其余每行 = 一个目录。`.0.x` 只剩 `nginx`（v3.2 从原 `core/` 拆出四个，v4.2 删掉其中三个工具）。
@@ -343,7 +369,7 @@ env/.env
 | `both` | solo 与 ha 共用同一节点身份（solo 时的单实例就是它） |
 | `solo` | 仅属于 solo 拓扑（当前无此类行；保留语义） |
 
-> 行内只写 4 列（`name | ip | ports | role`）= **省略 mode，即 mode=ha**；本表 44 行如此，只有 `both` 节点才写第 5 列。
+> 行内只写 4 列（`name | ip | ports | role`）= **省略 mode，即 mode=ha**；本表 43 行如此（其余 28 行为 `both`），只有 `both` 节点才写第 5 列。
 > 这样写是为了让"ha-only 成员"成为默认，减少一处手工维护。
 
 **solo 复用该栈 `.11` 节点的 IP**（两形态互斥、不同时运行），但**配置模板与数据目录独立**（`config/solo/`、`data/<group>/solo/`），互不污染。
@@ -377,7 +403,7 @@ redis-replica-2  | 172.28.2.13 | 6379       | replica
 sentinel-1       | 172.28.2.21 | 26379      | sentinel
 sentinel-2       | 172.28.2.22 | 26379      | sentinel
 sentinel-3       | 172.28.2.23 | 26379      | sentinel
-redis-exporter   | 172.28.2.41 | 9121       | exporter | both
+redis-sentinel-exporter | 172.28.2.41 | 9121 | exporter | both
 
 [stack.redis-cluster]
 rc-1             | 172.28.3.11 | 6379,16379 | master   | both
@@ -386,7 +412,7 @@ rc-3             | 172.28.3.13 | 6379,16379 | master
 rc-1r            | 172.28.3.21 | 6379,16379 | replica
 rc-2r            | 172.28.3.22 | 6379,16379 | replica
 rc-3r            | 172.28.3.23 | 6379,16379 | replica
-redis-exporter   | 172.28.3.41 | 9121       | exporter | both
+redis-cluster-exporter  | 172.28.3.41 | 9121       | exporter | both
 
 [stack.mysql]
 mysql-1          | 172.28.4.11 | 3306,33061 | mgr-member | both
@@ -460,6 +486,10 @@ grafana          | 172.28.12.31 | 3000 | ui | both
 [stack.jaeger]
 jaeger           | 172.28.12.32 | 16686,4317,4318,8888,13133 | trace | both
 
+# docs 域（§17 预留块 .20–.29 启用的第一个）：仓库 docs/ 的只读浏览入口
+[stack.docsify]
+docsify-1        | 172.28.20.11 | 3000      | docs  | both
+
 # 宿主访问入口（§15）：host | upstream_ip | port | base-path 能力
 [routes]
 rabbitmq.localhost     | 172.28.8.11  | 15672 | path-ok
@@ -469,6 +499,7 @@ prometheus.localhost   | 172.28.12.11 | 9090  | path-ok
 alertmanager.localhost | 172.28.12.21 | 9093  | path-ok
 jaeger.localhost       | 172.28.12.32 | 16686 | subdomain-only
 nacos.localhost        | 172.28.13.32 | 8080  | subdomain-only
+docsify.localhost      | 172.28.20.11 | 3000  | subdomain-only
 ```
 
 ### 5.2 集群形态选型表（需求⑤的核心）
@@ -491,8 +522,9 @@ nacos.localhost        | 172.28.13.32 | 8080  | subdomain-only
 | **alertmanager** | 单实例 | 告警路由无状态（silence 落盘） | `config/alertmanager.yml`、`data/alertmanager/` |
 | **grafana** | 单实例 | 无状态，dashboard/数据源全部走 provisioning | `config/provisioning/**`、`data/grafana/` |
 | **jaeger** | 单实例（**豁免**） | 本地 Badger 是单写者，双实例无法共享；真 HA 需 ES/Cassandra → N09 | `config/config.yaml`、`data/jaeger/badger/` |
+| **docsify** | 单实例（**豁免**） | 纯静态浏览，无状态、无成员关系；内容就是仓库 `docs/`，多实例只会得到同一个只读目录 | `config/index.html.tpl`、`data/site/`（渲染物）、`[routes]` 的 `docsify.localhost` |
 
-> 表中 16 个组件 ↔ 17 个部署单元：`redis` 一行对应 `redis-sentinel` / `redis-cluster` 两个互斥 profile。
+> 表中 17 个组件 ↔ 18 个部署单元：`redis` 一行对应 `redis-sentinel` / `redis-cluster` 两个互斥 profile。
 
 ### 5.3 豁免清单（不为 HA 而 HA）
 
@@ -503,10 +535,11 @@ nacos.localhost        | 172.28.13.32 | 8080  | subdomain-only
 | nginx VIP（keepalived） | **默认不启用**：单机故障域相同，VRRP 无法验证真实切换，只增加调试噪音 |
 | prometheus / alertmanager / grafana | **部分豁免**：Prom 双实例是冗余采集（无状态同步），Grafana 无状态（provisioning 即恢复），AM 单实例；真 HA（Thanos/VictoriaMetrics、AM gossip ×3）列入 N 级（§16.3） |
 | jaeger | **存储侧豁免**：Badger 单写者；采集侧虽无状态，但两份不共享存储只会得到互不可见的 trace（假 HA，比明确单实例更危险） |
+| docsify | **全量豁免**：只读静态浏览，内容就是仓库 `docs/`；双实例得同一份数据，无故障转移可言。`mode=both` 使 solo / ha 完全相同（见 §5.5） |
 
 ### 5.4 单机"集群"的诚实边界
 
-70 个容器共享**同一内核、同一磁盘、同一时钟**，因此本环境可验证：
+71 个容器共享**同一内核、同一磁盘、同一时钟**，因此本环境可验证：
 
 - ✅ 拓扑配置是否正确（成员身份、quorum、seeds、公告地址、slot 分布）
 - ✅ 协议行为是否正确（复制、选主、消费位点、重定向）
@@ -539,6 +572,7 @@ nacos.localhost        | 172.28.13.32 | 8080  | subdomain-only
 | prometheus | 1 实例 | 0.30 | 0.85 | solo：看指标；ha：双实例冗余 |
 | nacos | server 1 + console 1 | 0.55 | 1.35 | solo：单机注册+配置；ha：验证 3 节点与集群一致性 |
 | alertmanager / grafana / jaeger | 1 实例 | 0.05 / 0.25 / 0.15 | 同左 | 豁免栈，两形态相同 |
+| docsify | 1 实例 | 0.05 | 同左 | 豁免栈，两形态相同（内容只读 = 仓库 `docs/`） |
 
 #### 5.5.1 命令
 
@@ -603,7 +637,7 @@ make stack-switch S=pg MODE=ha # 先停当前形态再起目标形态（数据�
 | jaeger | `4317`（OTLP gRPC）/ `4318`（OTLP HTTP）/ `8888`（自身指标）/ `13133`（health） |
 | nacos | server：`8848`（HTTP API）、`9848`（客户端 gRPC = 8848+1000）、`9849`（服务端 gRPC）、`7848`（JRaft/集群通信）；console：`8080` |
 
-### 6.3 铁律三：`doctor.sh` 十四项体检
+### 6.3 铁律三：`doctor.sh` 十五项体检
 
 | # | 检查 | 失败处理 |
 |---|---|---|
@@ -621,9 +655,13 @@ make stack-switch S=pg MODE=ha # 先停当前形态再起目标形态（数据�
 | 12 | **演练保护**：`restart: unless-stopped` 存在时，演练必须走 `stop` 而非 `kill` | 提示 |
 | 13 | **双形态一致性**：profile 与 ini `mode` 一致；`data/<group>/solo` 与 `data/<group>/<node>` 不混用 | 失败 |
 | 14 | **路由与引用校验**：`[routes]` host 唯一、upstream IP 属于已启用块；观测四栈跨栈引用（Grafana→Prometheus、Grafana→Jaeger、Prom→AM）、`render.sh` 注入的其它地址（Kafka `advertised.listeners`、Patroni DCS、Router seeds、**nacos→mysql `db.url.0`**）都必须在 ini 中存在且对应域 mode 已启用 | 失败 |
+| 15 | **运行态健康**：按 `data/.mode-*` marker 算出"该在跑的容器"，逐个查 `running` + `healthy`；`restarting` / `unhealthy` = FAIL，已部署但未在跑 = WARN（并提示 daemon 重启后需重跑 `make stack-up`）。`RestartCount` 只当线索报在 PASS 详情里，不单独判 WARN（它不会自动清零） | 失败 / 提示 |
 
 > 第 4/5/10/13 项按"**已启用的栈**"取集合：P0–P6 期只校验已存在的目录与 `data/` 子树，未开工的栈不参与判定；
-> 全部 17 个部署单元建完后（P7）才要求全量通过。这样 `make doctor` 在每一期都能作为"本期绿灯"使用，而不是等到最后才全绿。
+> 全部 18 个部署单元建完后（P7）才要求全量通过。这样 `make doctor` 在每一期都能作为"本期绿灯"使用，而不是等到最后才全绿。
+>
+> 第 1–14 项全部是**静态校验**（ini / compose / 脚本 / 宿主路由），它们能在全停时跑通；
+> 第 15 项是唯一的**运行态**校验，用来接住"体检全绿但容器在 crash loop"这类事（DEC-48）。
 
 ---
 
@@ -649,14 +687,15 @@ make stack-switch S=pg MODE=ha # 先停当前形态再起目标形态（数据�
 | jaeger | `jaeger_storage.badger.directory`（= `data/jaeger/badger`）、OTLP 监听 `0.0.0.0:4317/4318`、`jaeger_query.base_path`、采样策略文件 | `data/jaeger/badger/`（trace 存储）、`config/sampling.json` | 改了 `data/` 路径 → 历史 trace "消失"；采样写错 → UI 有服务无链路 |
 | **nacos-server** | `spring.sql.init.platform=mysql` + `db.url.0` 指向 `172.28.4.31:6446/nacos_config`；`cluster.conf` 3 个固定 IP；`token.secret.key`（**若开启鉴权（D36=A）则三节点必须一致**）；`nacos.inetutils.ip-address` = 容器 IP；**schema 必须是 3.x 的 `mysql-schema.sql`** | **数据在 MySQL**（`nacos_config` 库）；`data/nacos-server-N/logs/` | token 不一致 → 节点互踢/403；IP 推断错 → gRPC 拿到不可达地址；用 2.x schema → 启动期建表冲突 |
 | **nacos-console** | `nacos.console.port=8080`、指向 server 列表（`172.28.13.11:8848` 等，由 render 注入） | 无状态（不落盘） | console 指向旧 server / 端口未对齐 → 打开空白或 502 |
+| **docsify** | `[routes]` 的 `docsify.localhost -> 172.28.20.11:3000`；站点壳（`index.html` / `_sidebar.md` / `assets/`）由 render 生成 | 无状态：内容就是仓库 `docs/`（只读挂载），`data/site/` 全部可重建 | 把内容目录做成可写挂载 → 镜像自举会往 `docs/` 里脚手架（已用 `DOCSIFY_AUTO_INIT=false` + `:ro` 双保险）；`_sidebar.md` 只在 render 时生成，新增 md 不重渲染就不进侧栏 |
 
 **这些文件全部落在 `services/<stack>/data/` 下（复合栈再加一层 profile：`services/redis/data/<group>/<node>/`）→ `backup-all.sh` 一并归档 → 恢复即恢复身份。**
 
 ---
 
-## 8. 组件契约（16 目录 / 17 部署单元）
+## 8. 组件契约（17 目录 / 18 部署单元）
 
-### 8.0 普通目录（15 个）
+### 8.0 普通目录（16 个）
 
 > 逐目录的实际文件清单见 §4；本节只约定"契约形状"。`scripts/` 按需裁剪（无 `bootstrap` 或整组省略），
 > 目录里出现什么由职责决定，不是套模板。
@@ -734,6 +773,7 @@ make obs / make obs-ha                        # = group-up G=observability MODE=
 | nginx | `curl -sf -H 'Host: grafana.localhost' 127.0.0.1/` | 200（路由打通） |
 | nacos-server | `curl -sf :8848/nacos/v1/console/health/readiness`（3.x 若迁到 actuator 则用 `/nacos/actuator/health`）+ `/nacos/v1/ns/operator/metrics` | readiness `UP`；raft 有 leader；`/nacos/v1/ns/service/list` 可用 |
 | nacos-console | `curl -sf :8080/` | 200（控制台根路径） |
+| docsify | `curl -sf :3000/` + `curl -sf :3000/content/plan.md` | 两者都 200（内容 404 = `docs/` 未挂上或 render 未跑） |
 
 > 上表是 **ha 形态**的判定条件。**solo 形态**用简化探测（因为对应拓扑根本不存在）：pg `pg_isready`、mysql `mysqladmin ping`、
 > mongo `mongosh --eval 'db.runCommand({ping:1})'`、redis `redis-cli ping`、kafka `kafka-topics.sh --list`、nacos `readiness`。
@@ -758,6 +798,32 @@ make failover-drill S=kafka          # 停 controller / 停 broker 两种剧本
 make failover-drill S=rocketmq
 ```
 
+### 8.4 宕机与 daemon 重启后的恢复（重要）
+
+`restart: unless-stopped` 只保证**容器**活回来，**不保证集群不变量活回来**。典型链条：
+
+```text
+OrbStack / 宿主重启
+  → 容器全部 running（restart 策略生效）
+  → mysql 三节点 MGR 停在 OFFLINE（group_replication_start_on_boot=OFF，防自动裂脑）
+  → nacos_config 库在成组后才会被创建 → 不存在
+  → nacos-server ×3 进 crash loop（restart=unless-stopped 会把它一直撞回来）
+```
+
+恢复口径：**按栈重跑幂等引导，不碰数据**（`bootstrap.sh` 已写成"已成组只修离队节点"）：
+
+```bash
+make doctor                              # 第 15 项会直接报出哪些容器在 crash loop / 没在跑
+make stack-up S=mysql MODE=ha       # bootstrap 重成 MGR + 重建 nacos_config + reload router
+make stack-up S=nacos MODE=ha       # 库好了才能起；依赖链见 R25
+make tier-s                             # 或者按档一键重放（该档已部署的栈都会重跑一遍 bootstrap）
+```
+
+设计决定：**不把 start_on_boot 改成 ON**。自动成组在单机重启场景下看似方便，但它会让
+"手工 bootstrap 才能建组"这条防裂脑约束失效（DEC-8 / DEC-17 同一取向）；正确的补偿是**可观察**
+（§6.3 第 15 项）与**可重放**（`stack-up` 幂等），而不是把风险交给镜像默认值。另：跨栈依赖
+（nacos→mysql）必须按 §8.4 的顺序恢复，先 mysql 后 nacos；反序不会损坏数据，但会白等一轮 crash loop。
+
 ---
 
 ## 9. 资源纪律
@@ -772,10 +838,10 @@ make failover-drill S=rocketmq
 | **D 组合** | nginx + redis-cluster + kafka + obs(solo) | ≈ 4.6 GB |
 | **E 共识** | nginx + etcd + consul + nats + obs(solo) | ≈ 1.4 GB |
 | **F 注册配置** | nginx + **nacos**（server×3 + console）+ **mysql** + obs(solo)（nacos 的库在 mysql；两者必须同起） | ≈ 3.7 GB |
-| **S 单人日常（solo 全栈）** | 17 个部署单元全部 solo（27 容器） | ≈ 5.3 GB |
-| ❌ 全量 ha | 17 个部署单元全部 ha（70 容器） | **≈ 14.7 GB / 可见 15.7 GB**（余量 ≈ 1.0 GB），**禁止常驻** |
+| **S 单人日常（solo 全栈）** | 18 个部署单元全部 solo（28 容器） | ≈ 5.35 GB |
+| ❌ 全量 ha | 18 个部署单元全部 ha（71 容器） | **≈ 14.75 GB / 可见 15.7 GB**（余量 ≈ 0.95 GB），**禁止常驻** |
 
-> A–F 与 S 档可常驻；全量 ha（14.7 GB）仅在"一次性全链路演练"时临时起，做完 `make down`。
+> A–F 与 S 档可常驻；全量 ha（14.75 GB）仅在"一次性全链路演练"时临时起，做完 `make down`。
 
 ### 9.2 硬性限流（不做就会炸）
 
@@ -791,6 +857,7 @@ make failover-drill S=rocketmq
 | jaeger | Badger `ttl: 72h`；`ephemeral: false` |
 | nacos-server | JVM `-Xms384m -Xmx384m`（默认会按宿主内存起大堆）；`nacos.naming.expireInstance=true`；关闭内嵌 Derby（`spring.sql.init.platform=mysql`） |
 | nacos-console | JVM `-Xms192m -Xmx192m`（无状态前端，不需要大堆） |
+| docsify | `mem_limit: 128m` + `cpus: 0.5`（Node LTS 空转约 40–60 MB，不设限会与业务栈抢内存） |
 | 全栈 | `logging: json-file max-size=10m max-file=3` |
 
 可选：`orb config set memory_mib 24576`（物理 48 GB，安全），但**不改档位纪律**（D29）。
@@ -819,6 +886,7 @@ include:
   - services/alertmanager/compose.yml
   - services/grafana/compose.yml
   - services/jaeger/compose.yml
+  - services/docsify/compose.yml
 ```
 
 - `render-all.sh` 扫描 `services/*/compose.yml` 生成该文件（复合栈只产生 1 行 include）。
@@ -886,6 +954,12 @@ redis_exporter: oliver006/redis_exporter:v1.67.0  # X.Y.Z：小版本会改指�
 | DEC-42 | **宿主入口 `80/443`**，只有 `nginx-1` 发布；`.env` 的 `ENTRY_HTTP_PORT` 可把宿主侧整体换到高位端口 | 实测非 root 绑定 80 可用（OrbStack 代理），最短 URL 对日常使用收益最大；但 macOS 上 80 可能被其他常驻服务占用，所以把宿主端口做成一个变量，而不是写死在 compose 里 |
 | DEC-43 | **`TZ=Asia/Shanghai`**，只写 `base/anchors.yml` 一处；MySQL / Mongo 统一 `utf8mb4` | 本地调试看日志/写 SQL 时不用心算时区；集中一处才能在需要时整体切 UTC（跨时区协作只有这一个开关）。组件内出现 `TZ=` 违反铁律一 |
 | **DEC-44** | **Nacos 直接上 3.x**（D35=B）：`nacos-server`×3 + **`nacos-console`×1**（控制台独立、8080、无状态），schema 用 **3.x** 的 `mysql-schema.sql`；端口表/路由/身份清单/probe 全部按 3.x 更新 | 3.x 是官方方向，2.x 已进入维护期；控制台拆成无状态前端后，1 个 console 指向 3 个 server 即可（少 2 个容器、少 2 份状态）。代价是**端口与 schema 与 2.x 不兼容**，且 3.x 资料较新 → 把"console 打包方式 / health 与 metrics 路径 / schema 文件名 / 鉴权默认"列为 P5 首次启动的**锁定四项**（R28） |
+| **DEC-45** | **P0 生成与运行契约**（D04–D07 全部取 A）：凭据用 `env/.env` + `scripts/gen-secrets.sh`（chmod 600，gitignore）；`base/anchors.yml` 由 `render-all.py` 在生成期展开；`services/*/compose.yml` 只作手写骨架，渲染器生成 `.generated/<stack>.yml` 与根聚合 compose；ini 保持竖线 5 列、`mode` 缺省 `ha` | 四项都是 P0 阻塞项，共同理由是"唯一输入 + 生成物可丢弃"：IP/镜像/锚点/凭据各只有一个事实源，根 compose 与 `.generated/` 可随时重建。代价是不能手改生成物，且每次改 ini/base 后必须 `make render`；doctor 第 4/5/13 项兜底 |
+| **DEC-46** | **启用第 15 域 `.20.x` docsify**（`services/docsify/`，`docsify-1`×1，`172.28.20.11:3000`，`role=docs`、`mode=both`）：用 `rockben/docsify-server` 把仓库 `docs/` 变成可浏览站点，经 `docsify.localhost` 从宿主访问；**内容以只读嵌套挂载挂到 `/docs/content`**，站点壳（`index.html` / `assets/` / `_sidebar.md`）渲染到 `data/site/`；`DOCSIFY_AUTO_INIT=false` 关掉镜像自举；HA 全量豁免（§5.3） | 文档体量（plan.md 1200+ 行）已不适合直读文件；docsify 无需构建、挂载即跑，符合"配置与数据全部位于本仓库"。只读挂载 + 关自举是为了不让容器回写 `docs/`（否则违反"`config/` 只放模板、产物落 `data/`"）。代价：多 1 容器 / 0.05 GB，占用预留块 `.20`（后续新域从 `.21` 取） |
+| **DEC-47** | **Prometheus 抓取目标按"该栈当前部署形态"过滤**：`hosts_of` / `redis_targets` 不再返 ini 全量，而是用 `services_of <profile> <deployed_mode>`（读 `data/.mode-*`，无 marker 回退 ha）只列真会起的节点；`job_name: prometheus` 自身按本次 `MODE` 参数取 | 实测反例：consul 跑 solo 时，prometheus 仍把 consul-2/3 列为目标并长期 `down`——`count(up==0)` 不是 0 就分不清"真故障"与"根本没部署这个副本"，`tier-s`（全 solo）会造出十多个假 down。保留 DEC-23 的"新栈自动纳入"：只要该栈被起过就会按当前形态出现；代价是**改形态后要 `make render` + reload** 才同步（已写进 §14 与 stacks.md） |
+| **DEC-48** | **doctor 增加第 15 项「运行态健康」**，并把"Docker daemon 重启后必须重跑 `make stack-up`（或 `make tier-*`）才能恢复集群不变量"写成正式口径（§6.3 / §8.4 / stacks.md 全局约定） | 真实事故链：daemon 重启 → `restart: unless-stopped` 只复活容器 → mysql 因为 `group_replication_start_on_boot=OFF` 停在 OFFLINE → `nacos_config` 库（成组后才建）不存在 → nacos ×3 进 crash loop（restart=50）——而 `make doctor` 当时 **14/14 PASS**。前 14 项全为静态校验，结构性看不见这一层。代价：doctor 从"全停也能绿"变成第 15 项依赖 daemon；已用 WARN（而非 FAIL）包住"未部署/没在跑"，保证没起东西时不会喷 FAIL |
+| **DEC-49** | **redis 的 `/scrape` 中继只列 6379 节点，不列 sentinel（26379）**：`redis_targets()` 跳过 `role=sentinel` | 实测：中继型 exporter 只能带一份全局 `REDIS_PASSWORD`，而 sentinel 自身不设密码（只用 `sentinel auth-pass` 连 master），带密码去连会 AUTH 失败；更坑的是 `up` 仍为 1（中继永远回 200），真正失败的是指标里的 `redis_up 0`——三个 sentinel 存活却长期报 0，与 DEC-47 要消除的假故障同一类（已用一个不带密码的临时 exporter 对照证实：同一 sentinel 目标 `redis_up 1`，加上 `REDIS_PASSWORD` 就变 0）。控制面健康本来就不靠指标：`make stack-status` 比三台 `get-master-addr-by-name` 是否一致，加 `make failover-drill`；主从切换在指标上体现为 `redis_role` 在两个 instance 间互换。代价：拿不到 sentinel 自身的 INFO 指标（想拿要先给 sentinel 设密码，已列为 D37） |
+| **DEC-50** | **`stack.sh` 的 MODE 缺省不再写死 solo，而是读 `.mode-<profile>` marker 沿用当前部署形态**（无 marker = 从没部署过才回退 solo） | 实测：`make stack-status S=mysql`（Makefile 旧默认 `MODE=solo`）在一个 **ha 部署**上走的是 solo 分支，打 `@@server_id / @@gtid_mode / @@version` 而**不是** MGR 成员表——看起来输出了东西、实际验的是另一个形态，跟 DEC-48 要消除的"绿色说谎"同类。marker 是唯一事实源（DEC-47/48 已用），`deployed_mode <profile> [fallback]` 加一个可选回退参数而不是再造一份读取逻辑。附带收益：DEC-48 的恢复口径"重跑 `make stack-up`"不带 MODE 时不会再把 ha 部署静默改成 solo。代价：`make stack-up S=<p>` 省略 MODE 的语义从"起 solo"变成"沿用当前形态"（要显式换形态必须写 `MODE=solo\|ha`），脚本每次会打印 `# MODE 未指定 -> <mode>` 以免误以为还是旧默认 |
 
 ### 11.2 历史（已被取代，留档）
 
@@ -903,7 +977,7 @@ redis_exporter: oliver006/redis_exporter:v1.67.0  # X.Y.Z：小版本会改指�
 | # | 风险 | 影响 | 缓解 |
 |---|---|---|---|
 | R1 | "宿主免端口映射"依赖 OrbStack | 换 Colima/Docker Desktop → Sentinel/Cluster/Patroni/Router/Kafka 地址公告失效 | `doctor.sh` 第 7 项卡死 context；README 顶部写前提；换运行时按 §1 重新评估 |
-| R2 | 70 容器 / 14.7 GB（余量 ≈ 1.0 GB） | OOM / 宿主卡顿 | 六档纪律（§9.1）+ §9.2 限流；全量 ha 不常驻；`make size` 监控 |
+| R2 | 71 容器 / 14.75 GB（余量 ≈ 0.95 GB） | OOM / 宿主卡顿 | 六档纪律（§9.1）+ §9.2 限流；全量 ha 不常驻；`make size` 监控 |
 | R3 | 身份状态文件丢失 | 集群不可恢复（需重建 + 数据丢失） | 状态文件全在 `data/` → `backup-all.sh`；`stack-reset` 前强制备份 |
 | R4 | macOS bind mount 权限 | PG/Redis/MySQL/Mongo 启动失败 | `bootstrap.sh` 对齐 uid（999）；`PGDATA` 用子目录避开 lost+found |
 | R5 | 单机模拟集群 ≠ 真分布式 | 无法复现脑裂/时钟/跨机延迟 | §5.4 明确边界；多机验证另立方案（N02） |
@@ -911,7 +985,7 @@ redis_exporter: oliver006/redis_exporter:v1.67.0  # X.Y.Z：小版本会改指�
 | R7 | 重启顺序依赖 | bootstrap 逆序导致成员无法加入 | `render.sh` 固定依赖顺序；`stack-up` 内置等待 healthy |
 | R8 | `include` 无 glob | 新增/恢复域漏登记 | `render-all.sh` 生成，不手写 |
 | R10 | MGR/DLedger/Patroni 均依赖"初始种子 + 整栈重建" | 单节点 reset 会导致集群无法恢复 | `reset.sh` 强制整栈；`doctor.sh` 第 11 项校验法定人数 |
-| R11 | 容器命名/日志量 | 70 个容器日志炸盘 | 统一命名 `<stack>-<node>`；日志限 10m×3 |
+| R11 | 容器命名/日志量 | 71 个容器日志炸盘 | 统一命名 `<stack>-<node>`；日志限 10m×3 |
 | R12 | `restart` 策略干扰演练 | 误判"切换成功" | `doctor.sh` 第 12 项 + §8.3 |
 | R13 | 双形态配置漂移 | solo 行为被误当集群结论 | 两形态共用同一份模板渲染；`docs/stacks.md` 标注语义差异 |
 | R14 | 两形态/两 profile 数据目录误用 | 用 solo 数据启动 ha 节点 → `nodes.conf` / MGR 元数据损坏 | `render.sh` 生成不同 `dir`；`stack-switch` 强制提示；`data/<group>/` 分层 |
@@ -927,6 +1001,7 @@ redis_exporter: oliver006/redis_exporter:v1.67.0  # X.Y.Z：小版本会改指�
 | R26 | Nacos 的 gRPC（9848/9849）**不经 nginx** | 容器/宿主能连 8848 却连不上 9848 → 客户端注册成功但推送失败 | 客户端配置节点固定 IP（DEC-3 前提）；`nginx` 只代理控制台；换运行时见 R1 |
 | R27 | **删掉 mailpit / minio 后的能力缺口**：没有邮件外发通道、没有 S3 兼容存储 | 告警只能看 AM UI；应用若需要对象存储则没地方放 | 告警改用 `receivers: nul`（Grafana/AM UI 查看）；对象存储需要时按 §17 追加（N12） |
 | R28 | **Nacos 3.x 与 2.x 不兼容**：控制台端口、schema、鉴权默认值都可能不同；3.x 资料较新 | 按 2.x 经验配 → 控制台打不开 / 建表冲突 / 客户端 403 | P5 首次启动锁定四项并写进 `docs/stacks.md`：console 是否独立镜像与端口、health/metrics 路径、3.x schema 文件名、鉴权是否默认开启；`backup-all` 不跨大版本恢复（R3） |
+| R29 | **宿主 / Docker daemon 重启后集群不变量不恢复**（MGR `start_on_boot=OFF`、Patroni/DLedger 需重加入），而 `restart` 只复活容器 → 跨栈依赖（nacos→mysql）连环 crash loop | 重启后"看起来全在跑"，实际集群未成组、上层栈持续重启 | §8.4 恢复口径（按依赖顺序重跑幂等的 `make stack-up`）；§6.3 第 15 项把运行态纳入体检（crash loop = FAIL，已部署未跑 = WARN）；DEC-48 |
 
 > 编号 R9（MinIO 一致性）、R20（缩容期"覆盖不足"）、R21（Redis 单机 maxmemory）已随范围调整移除；编号不复用，避免与历史文档/提交记录错位。
 
@@ -936,7 +1011,7 @@ redis_exporter: oliver006/redis_exporter:v1.67.0  # X.Y.Z：小版本会改指�
 
 | 期 | 内容 | 验收 |
 |---|---|---|
-| **P0 地基** | `base/`、`stock/network.ini`（14 域花名册）、`services/nginx`（solo + ha）、`doctor.sh`、`render-all.sh`、`Makefile`、`.gitignore`、`env/` | `make doctor` 14 项全绿；`MODE=solo` 起 1 容器、`MODE=ha` 起 2 容器；容器内 `date` 显示 `CST +0800`；`grafana.localhost` 的 502 能说明路由已通（观测栈未起）；`git status` 不含 `data/`、`.env` |
+| **P0 地基** | `base/`、`stock/network.ini`（14 域花名册）、`services/nginx`（solo + ha）、`doctor.sh`、`render-all.sh`、`Makefile`、`.gitignore`、`env/` | `make doctor` 15 项全绿；`MODE=solo` 起 1 容器、`MODE=ha` 起 2 容器；容器内 `date` 显示 `CST +0800`；`grafana.localhost` 的 502 能说明路由已通（观测栈未起）；`git status` 不含 `data/`、`.env` |
 | **P1 etcd** | 最轻的共识栈，把 bootstrap 契约打磨成型 | 3 节点 `endpoint health` 全 ok；停 1 节点仍可写；恢复后成员自动回归 |
 | **P2 pg（Patroni）** | patroni×3 + DCS×3 + haproxy×2 + exporter | `patronictl list` 1L2R；`make failover-drill S=pg` → leader 在 30s 内转移，旧主回归为 replica |
 | **P3 redis** | 复合栈两组：哨兵（1M+2R+3S）与集群（3M+3R） | 哨兵：`get-master-addr-by-name` 正确、10s 内切主；集群：`cluster_state:ok`、3M3R、16384 slots；`stack-reset S=redis-sentinel` 不影响 `data/cluster/` |
@@ -954,13 +1029,13 @@ redis_exporter: oliver006/redis_exporter:v1.67.0  # X.Y.Z：小版本会改指�
 ## 14. 命令速查（目标契约）
 
 ```bash
-make doctor                    # 14 项体检
+make doctor                    # 15 项体检
 make render                    # ini → compose.generated.yml + 各栈配置
 make prepull [TIER=a|b|c|d|e|f] # 按 images.yml 预拉镜像（D01/D27，可选）
 make up                        # 起当前档位（默认 A）
 make down                      # 停全部（按 profile，不漏组）
 make ps / make size            # 状态 / 磁盘占用（含各栈 data/）
-make tier-s                    # solo 全栈（27 容器，≈ 5.3 GB）
+make tier-s                    # solo 全栈（28 容器，≈ 5.35 GB）
 make tier-a|tier-b|tier-c|tier-d|tier-e|tier-f
 make stack-up     S=pg MODE=solo|ha
 make stack-switch S=pg MODE=ha
@@ -970,7 +1045,7 @@ make stack-shell  S=pg N=patroni-1
 make stack-host   S=pg N=patroni-1   # 宿主侧用固定 IP 直连
 make backup                    # 归档所有栈 data/ + 状态文件
 make failover-drill S=pg|redis-sentinel|redis-cluster|mysql|mongo|kafka|rocketmq
-make ui-open S=grafana|jaeger|rabbitmq|consul|prometheus|alertmanager|nacos
+make ui-open S=grafana|jaeger|rabbitmq|consul|prometheus|alertmanager|nacos|docsify
 make routes                    # 打印全部 <svc>.localhost 入口
 make obs / make obs-ha         # = group-up G=observability MODE=solo 或 ha
 make trace-demo                # 向 jaeger 推一条 OTLP trace
@@ -982,7 +1057,7 @@ make trace-demo                # 向 jaeger 推一条 OTLP trace
 
 ### 15.1 问题背景
 
-铁律 F06 是"除 nginx 外不发布宿主端口"，而各栈控制台（RabbitMQ Mgmt / Consul UI / Grafana / Prometheus / Alertmanager / Jaeger / Nacos）都在非 edge 的域里。
+铁律 F06 是"除 nginx 外不发布宿主端口"，而各栈控制台（RabbitMQ Mgmt / Consul UI / Grafana / Prometheus / Alertmanager / Jaeger / Nacos / docsify）都在非 edge 的域里。
 不管的话这些 UI 从宿主一律打不开。
 
 ### 15.2 为什么用子域而不是子路径
@@ -998,6 +1073,7 @@ make trace-demo                # 向 jaeger 推一条 OTLP trace
 | Jaeger | ⚠️ 支持 `--query.base-path` | ✅ | 子路径需同步 `JAEGER_UI_BASE_PATH` |
 | **Consul UI** | ⚠️ 固定 `/ui`，不支持自定义前缀 | ✅ | |
 | **Nacos Console** | 3.x 控制台独立（`8080`，根路径）；2.x 才是 `/nacos` 前缀 | ✅ | 子域下直接 `http://nacos.localhost/`（3.x） |
+| **docsify** | ⚠️ 需 `window.$docsify` 的 `homepage` / `loadSidebar` / 资产路径全部改成相对 base，易漏 | ✅ | 站内 markdown 链接是相对路径，子路径下会算错基址（DEC-46） |
 
 → **统一走子域**：路由表在 `stock/network.ini` 的 `[routes]`（DEC-22），nginx 配置由此生成。
 
@@ -1014,6 +1090,7 @@ prometheus.localhost   | 172.28.12.11 | 9090  | path-ok
 alertmanager.localhost | 172.28.12.21 | 9093  | path-ok
 jaeger.localhost       | 172.28.12.32 | 16686 | subdomain-only
 nacos.localhost        | 172.28.13.32 | 8080  | subdomain-only
+docsify.localhost      | 172.28.20.11 | 3000  | subdomain-only
 ```
 
 > 只有 `nginx-1` 把 `80` 发布到宿主（`ENTRY_HTTP_PORT` 可覆盖）；`nginx-2` 不发布，供"双地址"验证。
@@ -1111,9 +1188,8 @@ scrape_configs:
           - '172.28.2.11:6379'   # master
           - '172.28.2.12:6379'
           - '172.28.2.13:6379'
-          - '172.28.2.21:26379'  # sentinel-1
-          - '172.28.2.22:26379'
-          - '172.28.2.23:26379'
+          # sentinel-1..3（.21-.23:26379）不抓（DEC-49）：中继只有一份共享密码，
+          # sentinel 自己不设密码 → AUTH 失败 → redis_up 恒 0（假故障）
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -1173,6 +1249,15 @@ scrape_configs:
 
 **效果**：加一个栈 → `make render` → 监控自动纳入，不会出现"新栈没人监控"。
 
+**DEC-47**：目标只列**该栈当前部署形态真会起的节点**（读 `data/.mode-*`）。否则会长期出现
+"solo 栈的副本节点永远 down"这种假故障；改形态后要 `make render && curl -X POST :9090/-/reload` 才同步。
+
+**DEC-49**：redis 的 `/scrape` 中继**不列 sentinel 口**（只列 6379）。同一取向的另一半：
+中继只能带一份密码，sentinel 不设密码，带密码去连会 AUTH 失败而 `up` 仍为 1（中继永远回 200），
+只剩一个无法区分的 `redis_up 0`。sentinel 健康靠 `make stack-status S=redis-sentinel`（三台
+`get-master-addr-by-name` 必须一致）与切主演练；要在指标里看主从切换，查 `redis_role` 在
+两个 instance 间互换。想让 sentinel 也进指标需先给它设密码（D37，未定）。
+
 > 上面两个 redis job 是**完整可用的写法**（`metrics_path: /scrape` + 三条 relabel），不是示意：
 > `targets` 填 redis 节点、`__address__` 被改写到 exporter，`instance` 还原成真实节点地址 —— 这样每栈只占 1 个 exporter 容器、
 > 1 个 `.41` 尾号，就能覆盖该栈全部 6 个节点，且面板里能按节点拆分。
@@ -1197,7 +1282,7 @@ Prometheus 是**拉模式、无共识、本地 TSDB**，不存在"主"的概念�
 |---|---|
 | 容器资源总览 | cadvisor（若启用，独立目录 `services/cadvisor/`，`.12.41`，见 D30） |
 | PG 复制延迟 / leader 变更 | `pg-exporter` + Patroni |
-| Redis 哨兵切换 / 集群 slot | `redis_exporter` |
+| Redis 哨兵切换 / 集群 slot | `redis_exporter`（主从节点；sentinel 口不抓，DEC-49；切换看 `redis_role` 互换） |
 | MySQL MGR 成员状态 | `mysqld_exporter` |
 | Mongo RS 成员状态 | `mongodb_exporter` |
 | Kafka lag / 副本同步 | `kafka-exporter` |
@@ -1227,13 +1312,13 @@ Prometheus 是**拉模式、无共识、本地 TSDB**，不存在"主"的概念�
 
 ## 17. 如何追加一个新域（机制保持可逆）
 
-v4.0 已把 13 个域全部纳入；将来加**第 14 个域**（例如 Elasticsearch、Pulsar、TiDB）时步骤固定：
+v4.0 已把 13 个域全部纳入，v4.4 已动用预留块 `.20`（docsify）；将来加下一个域（例如 Elasticsearch、Pulsar、TiDB）时步骤固定：
 
-1. `stock/network.ini` 取一个预留块（`.20–.29`），加 `[stack.<name>]`，每行写 `role` 与 `mode`。
+1. `stock/network.ini` 取一个预留块（`.21–.29`），加 `[stack.<name>]`，每行写 `role` 与 `mode`。
 2. `services/<name>/`：照 §8 契约建 `compose.yml` + `config/` + `scripts/` + `data/`。
    仅当满足 §2.1 的四条"复合栈"条件时，才允许与已有栈同目录。
 3. `bash scripts/render-all.sh`：`compose.generated.yml` 自动 include；`prometheus.yml` 自动纳入（`role=exporter` 或原生指标表）。
 4. 若要 UI：`[routes]` 加一行，nginx 配置自动生成。
-5. `doctor.sh` 无需改 —— 第 1–5/11/13/14 项按 ini 通用校验（法定人数、IP 一致性、双形态、路由/引用）会自动覆盖。
+5. `doctor.sh` 无需改 —— 第 1–5/11/13/14 项按 ini 通用校验（法定人数、IP 一致性、双形态、路由/引用）会自动覆盖；第 15 项按 `data/.mode-<profile>` marker 自动把新栈的运行态纳入校验，`prometheus` 目标也按 marker 自动只列真会起的节点（DEC-47）。
 
 > 追加哪一个，就同时补 `docs/stacks.md` 的对应章节；不要"只起容器不写验证口径"。

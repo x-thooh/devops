@@ -1,6 +1,6 @@
 # 待决事项清单（决策清单）
 
-> 配套文档：`docs/plan.md`（**v4.3：14 域，Nacos 3.x（server×3 + console）**）。本文件只列**未定案**的问题。
+> 配套文档：`docs/plan.md`（**v4.5：15 域，Nacos 3.x（server×3 + console）+ docsify**）。本文件只列**未定案**的问题。
 > 每项给出：问题 → 选项 → 我的推荐 → 影响面 → 阻塞阶段。
 > **回复格式**：只需写 `D01=A, D31=A` 这样的键值即可；同意的推荐值写 `OK`。
 >
@@ -14,9 +14,9 @@
 |---|---|---|
 | 阻塞 P0 | **0**（D01–D08 全部落定，P0 可开工） | — |
 | 分栈决策（P1–P7） | 11（D09–D16、D18–D19、D36） | 各自所属阶段 |
-| 方案缺口 | 15（D20–D34） | 建议 P0/P1 一并定 |
+| 方案缺口 | 16（D20–D34、D37） | 建议 P0/P1 一并定 |
 | 明确不做 | 12（N01–N12） | 已排除，供你否决 |
-| 已定案 | 29（F01–F29） | 已写入 plan v4.3 |
+| 已定案 | 34（F01–F34） | 已写入 plan v4.5 |
 
 **最小决策集**：**已清零** —— P0 的 8 项（D01–D08）全部落定，可直接进入 P0 实施（plan §13）。
 
@@ -40,7 +40,7 @@
 | F12 | observability 域（`.12.x`）内按组件拆 4 栈：prometheus / alertmanager / grafana / jaeger | plan DEC-20/24/29 |
 | F13 | UI 统一经 `<svc>.localhost` 子域，路由表进 ini `[routes]` | plan DEC-21/22 |
 | F14 | 可观测性四栈各自带 compose/config/scripts/data | plan §16.1 |
-| F15 | 三层模型：域（14）/ 目录（16）/ 部署单元（17）/ 容器（26→69） | plan §2.1 |
+| F15 | 三层模型：域（15）/ 目录（17）/ 部署单元（18）/ 容器（28→71） | plan §2.1 |
 | F16 | 块号与 `[stack.*]` 命名不随范围调整删除 | plan DEC-28 |
 | F17 | `services/jaeger/`（`.12.32`）：OTLP + Badger + UI；不伪装双实例 HA | plan DEC-29/30 / §16.5 |
 | F18 | `redis` 复合栈（一目录两组互斥 profile；数据分 `data/sentinel/`、`data/cluster/`） | plan DEC-31/32 / §8.0.1 |
@@ -55,6 +55,11 @@
 | **F27** | **`TZ=Asia/Shanghai`**（只在 `base/anchors.yml` 出现），MySQL/Mongo `utf8mb4` | plan DEC-43 / D08 |
 | **F28** | **RabbitMQ 端口含 Erlang 分发段 `35672-35682`**（与 v2.3 一致；doctor 第 3 项按区间校验） | plan §5.1 / §6.2 / Q10 |
 | **F29** | **Nacos 升 3.x**：`nacos-server`×3 + `nacos-console`×1（8080，无状态），3.x schema；P5 锁定四项待确认 | plan DEC-44 / D35 / R28 |
+| **F30** | **启用第 15 域 `.20.x` docsify**（§17 预留块首个）：仓库 `docs/` 只读挂到 `/docs/content`，站点壳渲染到 `data/site/`，`DOCSIFY_AUTO_INIT=false`；无状态纯浏览，HA 全量豁免 | plan DEC-46 / §5.3 |
+| **F31** | **Prometheus 抓取目标按"该栈当前部署形态"过滤**（读 `.mode-<profile>` marker）：未部署的副本不再长期报 `down`，`down` 只表示"该起而没起" | plan DEC-47 / §16.2 |
+| **F32** | **`doctor` 增加第 15 项「运行态健康」**；并把"Docker daemon 重启后必须重跑 `make stack-up` 才能恢复集群不变量"写成正式口径（不把 `group_replication_start_on_boot` 改成 `ON`） | plan DEC-48 / §6.3 / §8.4 / R29 |
+| **F33** | **redis 的 `/scrape` 中继只列 6379 节点，不列 sentinel（26379）**：中继只有一份共享 `REDIS_PASSWORD`，而 sentinel 自身不设密码（只靠 `auth-pass` 连 master），带密码去连必 AUTH 失败 → `redis_up` 恒 0 而 `up` 仍为 1，又是一个无法与真故障区分的假信号 | plan DEC-49 / §16.2 |
+| **F34** | **`stack.sh` 的 MODE 缺省不再写死 solo**：读 `.mode-<profile>` marker 沿用当前部署形态，从没部署过才回退 solo（并打印解析结果）；避免 ha 部署被当 solo 查（MGR 成员表 vs `@@server_id`） | plan DEC-50 / stacks.md 全局约定 |
 
 ---
 
@@ -101,7 +106,9 @@
 **影响**：仅 `[stack.nginx]`
 **阻塞**：无（P0 按此落地）
 
-### D04 凭据策略 🔴
+### D04 凭据策略 ✅ 已定案（A）
+
+**结论**：**A**。`scripts/gen-secrets.sh` 首次生成 `env/.env`（随机密码，chmod 600，gitignore）；`make secrets-show` 查看，缺失时 Makefile / `stack.sh` 自动生成。Redis 两组 profile 的 `requirepass` / `masterauth` 必须同源。
 
 | 选项 | 说明 |
 |---|---|
@@ -109,11 +116,12 @@
 | B | 统一简单密码（如 `devops123`），方便手敲/贴连接串 |
 | C | Docker secrets（compose 下退化为文件挂载） |
 
-**推荐**：**A** + `make secrets-show` 打印；Redis 两组 profile 的 `requirepass` / `masterauth` 必须一致
 **影响**：13 域全部（PG/MySQL/Mongo/Redis/RabbitMQ/Consul ACL/Grafana/Nacos token）
-**阻塞**：P0
+**阻塞**：无（P0 已按 A 落地，DEC-45）
 
-### D05 共享配置注入机制 🔴
+### D05 共享配置注入机制 ✅ 已定案（A）
+
+**结论**：**A**。`base/anchors.yml` 定义 `x-common:`，`render-all.py` 在生成期展开为各 service 的 `logging` / `restart` / `TZ` / 健康检查默认值；组件骨架内出现同类字段即判失败。
 
 **问题**：`logging` / `restart` / `TZ` / 健康检查默认值如何复用到 18 个目录？
 
@@ -125,20 +133,22 @@
 | B | 每个组件 `compose.yml` 顶部 `extends: ../base/base-service.yml` |
 | C | 在每个组件文件内重复写 5 行 |
 
-**推荐**：**A**（生成期展开，最可控）
-**阻塞**：P0
+**阻塞**：无（P0 已按 A 落地，DEC-45）
 
-### D06 `compose.yml` 生成 vs 手写 🔴
+### D06 `compose.yml` 生成 vs 手写 ✅ 已定案（A）
+
+**结论**：**A 的变体：手写骨架 + 全生成聚合**。`services/<stack>/compose.yml` 是入库的手写骨架（只写 services / profiles / volumes / healthcheck / `x-image`）；`render-all.py` 扫描骨架并注入 base 与 ini，生成 `.generated/<stack>.yml`、根 `compose.yml`、`compose.generated.yml`（均不入库）。
 
 | 选项 | 说明 |
 |---|---|
 | A | 全生成（`render-all.sh` 扫 `services/*/compose.yml`） |
 | B | 手写 include 列表（19 行），靠 `doctor.sh` 检查漏登记 |
 
-**推荐**：**A**；`compose.generated.yml` 标记生成物，禁止手改
-**阻塞**：P0
+**阻塞**：无（P0 已按此落地，DEC-45）
 
-### D07 `stock/network.ini` 格式确认 🔴
+### D07 `stock/network.ini` 格式确认 ✅ 已定案（A）
+
+**结论**：**A**。竖线分隔 5 列 `name | ip | ports | role | mode`；`mode` 缺省 = `ha`；`scripts/ini.py` 零依赖解析并校验 71 行 / 18 profile。
 
 现方案：竖线分隔 5 列 `name | ip | ports | role | mode`，`awk -F'|'` 解析，`mode` 缺省 = `ha`。
 
@@ -148,8 +158,7 @@
 | B | 改 TOML/JSON（需 `jq`/python） |
 | C | 改 YAML（需 `yq`） |
 
-**推荐**：**A**
-**阻塞**：P0
+**阻塞**：无（P0 已按 A 落地，DEC-45）
 
 ### D08 时区与字符集 ✅ 已定案（A）
 
@@ -160,7 +169,7 @@
 - 日志时间戳统一为本地时间（+08:00）；跨时区协作时如需 UTC，改 `base/anchors.yml` 一处即可。
 - P0 验收：任一容器内 `date` 显示 `CST +0800`。
 
-**影响**：全部 17 个部署单元的日志与时间字段
+**影响**：全部 18 个部署单元的日志与时间字段
 **阻塞**：无（P0 按此落地）
 
 ---
@@ -323,7 +332,9 @@ v4.2 删除 minio（DEC-38，无消费者）。若将来需要对象存储（应
 
 **已定**（plan DEC-20/24/29 / §16）：observability 域（块 `172.28.12.x`），按组件拆 4 栈：
 `prometheus`（0.30/0.85）· `alertmanager`（0.05）· `grafana`（0.25）· `jaeger`（0.15）；合计 solo 0.75 / ha 1.30 GB。
-抓取目标双来源（DEC-35）：`role=exporter` 行 + 原生 `/metrics` 映射表。
+抓取目标双来源（DEC-35）：`role=exporter` 行 + 原生 `/metrics` 映射表；
+目标集再按各栈当前部署形态过滤（DEC-47 / F31）——否则 solo 形态的栈会把不存在的副本
+长期报成 `down`（实测反例：consul 跑 solo 时 `consul-2/3` 常年在 2 个 down 里）。
 仅剩子项：Thanos（N 级）、Loki（D26）、容器指标（D30）。
 
 ### D21 solo↔ha 切换的数据处理
@@ -462,6 +473,19 @@ v4.2 删除 minio（DEC-38，无消费者）。若将来需要对象存储（应
 **推荐**：**B**
 **阻塞**：P7
 
+### D37 sentinel 是否设密码以进指标 🆕
+
+**背景**：DEC-49 已把 sentinel 口（26379）从 `/scrape` 中继的目标里剔除。剔除后 `redis-sentinel` profile 的指标面只剩 3 个 6379 节点；主从切换本身仍可通过 `redis_role` 在两个 instance 间互换成像观测，但**拿不到 sentinel 自身的 INFO 指标**（`sentinel_masters` / `sentinel_active_instances` / 已故障转移次数等）。
+
+| 选项 | 说明 | 代价 |
+|---|---|---|
+| A | **不设密码，不进指标**（现状，推荐） | 缺 sentinel 控制面指标；sentinel 健康改由 `make stack-status` + `failover-drill` 举证 |
+| B | 给三台 sentinel 也 `requirepass`（同集群密码），中继带密码即可采到 | 需重测 sentinel 互联与 quorum 鉴权路径、切主后的 `sentinel.conf` 重写、`auth-pass` 与自身密码同名带来的歧义 |
+
+**推荐**：**A**。理由：本仓库 sentinel 的角色是"验证切换语义"而不是"长期值守"，控制面健康由脚本举证比多一个指标更直接；B 会改动已实测通过的切主路径，风险收益比不划算。
+**影响**：仅 `redis-sentinel` profile（`services/redis/compose.yml` 的 sentinel 段 + `services/prometheus/scripts/render.sh` 的 `redis_targets()`）
+**阻塞**：无
+
 ---
 
 ## 5. 明确不做（供你否决）
@@ -500,9 +524,9 @@ P0 的 8 项决策全部落定，可以直接进入 `plan §13` 的 P0 实施：
 
 **P0 交付物**（plan §13）：`base/`（network / anchors / images / jvm）、`stock/network.ini`（14 域花名册）、`services/nginx`、`doctor.sh`、`render-all.sh`、`Makefile`、`.gitignore`、`env/`。
 
-**P0 验收**：`make doctor` 14 项全绿（按"已启用的栈"取集合）；`MODE=solo` 起 1 容器、`MODE=ha` 起 2 容器；容器内 `date` 显示 `CST +0800`；`git status` 不含 `data/`、`.env`。
+**P0 验收**：`make doctor` 15 项全绿（按"已启用的栈"取集合）；`MODE=solo` 起 1 容器、`MODE=ha` 起 2 容器；容器内 `date` 显示 `CST +0800`；`git status` 不含 `data/`、`.env`。
 
-**其余待答（都不阻塞 P0）**：D09–D19（各栈版本/形态，按推荐落地）、D21–D34（方案缺口；D20 已定，仅剩子项）、D36（Nacos 鉴权，P5 与 R28 一起确认）。
+**其余待答（都不阻塞 P0）**：D09–D19（各栈版本/形态，按推荐落地）、D21–D34（方案缺口；D20 已定，仅剩子项）、D36（Nacos 鉴权，P5 与 R28 一起确认）、D37（sentinel 是否设密码以进指标，P3 语境）。
 
 > Q10（RabbitMQ 端口段）已按推荐落地（F28）：`35672-35682` 写进 ini，doctor 第 3 项按区间展开校验；若不需要可删该段。
 

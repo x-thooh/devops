@@ -1,0 +1,16 @@
+# 跨栈共享默认值（plan §2 / DEC-43）
+# 只作为 render-all 的输入：展开进 .generated/*.yml，组件目录内不得重复写这些字段。
+x-common:
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+  environment:
+    TZ: Asia/Shanghai
+  healthcheck:
+    interval: 10s
+    timeout: 5s
+    retries: 12
+    start_period: 10s

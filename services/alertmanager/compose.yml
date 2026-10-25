@@ -1,0 +1,12 @@
+# 手写骨架：不写 image / logging / restart / TZ / networks / IP
+# 单实例（豁免栈）：告警不外发，receiver 固定 nul，只在 UI 查看
+services:
+  alertmanager:
+    x-image: alertmanager
+    profiles: ["alertmanager"]
+    container_name: alertmanager
+    entrypoint: ["/bin/sh", "/data/active/alertmanager/entry.sh"]
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9093/-/ready >/dev/null"]

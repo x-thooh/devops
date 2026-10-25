@@ -1,0 +1,46 @@
+# 镜像唯一清单（plan §10 / DEC-39 / DEC-40）
+# 版本粒度默认 X.Y；上游只发 X.Y.Z 的按 X.Y.Z pin，并在行尾注明。
+# 覆盖方式：env/.env 的 IMG_<KEY> 逐个覆盖，IMAGE_PREFIX 整体加前缀。
+nginx: nginx:1.27-alpine                        # X.Y
+
+# ---- pg：patroni 由 services/pg/Dockerfile 基于官方 postgres 构建（本地 tag）
+postgres: postgres:17.5                         # X.Y
+patroni: devops/patroni:4.0.4                   # X.Y.Z（本地构建，见 services/pg/Dockerfile）
+etcd: quay.io/coreos/etcd:v3.5.17               # X.Y.Z（上游不发 X.Y）
+haproxy: haproxy:3.0-alpine                     # X.Y
+postgres_exporter: prometheuscommunity/postgres-exporter:v0.17.1  # X.Y.Z
+
+# ---- redis
+redis: redis:7.4-alpine                         # X.Y（两组 profile 必须同版本）
+redis_exporter: oliver006/redis_exporter:v1.67.0  # X.Y.Z（小版本会改指标名）
+
+# ---- mysql
+mysql: mysql:8.0                                # X.Y（Router 仅有 8.0.x 镜像，保持同版本）
+mysql_router: mysql/mysql-router:8.0.32         # X.Y.Z（上游 8.0 之后不再发 Router 镜像）
+mysqld_exporter: prom/mysqld-exporter:v0.17.2      # X.Y.Z
+
+# ---- mongo
+mongo: mongo:7.0                                # X.Y
+mongodb_exporter: percona/mongodb_exporter:0.43.1  # X.Y.Z
+
+# ---- kafka / rocketmq / rabbitmq
+kafka: apache/kafka:3.9.0                       # X.Y.Z（上游不发 X.Y 标签）
+kafka_exporter: danielqsj/kafka-exporter:v1.9.0  # X.Y.Z
+rocketmq: apache/rocketmq:5.3.1                 # X.Y.Z
+rocketmq_exporter: apache/rocketmq-exporter:0.0.2  # X.Y.Z（上游只有 0.0.2；0.0.4 无镜像）
+rabbitmq: rabbitmq:4.0-management               # X.Y
+
+# ---- 共识 / 注册
+consul: hashicorp/consul:1.20                   # X.Y
+nats: nats:2.10-alpine                          # X.Y
+nats_exporter: natsio/prometheus-nats-exporter:0.16.0  # X.Y.Z
+nacos: nacos/nacos-server:v3.0.2                # X.Y.Z（3.x，见 DEC-44）
+
+# ---- 观测
+prometheus: prom/prometheus:v2.55.1             # X.Y.Z
+alertmanager: prom/alertmanager:v0.27.0         # X.Y.Z
+grafana: grafana/grafana:11.3.0                 # X.Y.Z
+jaeger: jaegertracing/jaeger:2.1.0              # X.Y.Z（v2 OTel 发行版）
+
+# ---- 文档浏览（.20 域，DEC-46）
+docsify: rockben/docsify-server:4.4.4           # X.Y.Z（标签跟随内置 docsify-cli 版本，上游不发 X.Y；滚动标签，需严格可复现按 digest pin）

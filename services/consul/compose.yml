@@ -1,0 +1,32 @@
+# 手写骨架：不写 image / logging / restart / TZ / networks / IP
+# 配置用 JSON（-config-dir），避免在 compose 里出现任何地址字面量
+services:
+  consul-1:
+    x-image: consul
+    profiles: ["consul"]
+    container_name: consul-1
+    command: ["agent", "-config-dir=/data/active/consul-1"]
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "consul", "info"]
+
+  consul-2:
+    x-image: consul
+    profiles: ["consul"]
+    container_name: consul-2
+    command: ["agent", "-config-dir=/data/active/consul-2"]
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "consul", "info"]
+
+  consul-3:
+    x-image: consul
+    profiles: ["consul"]
+    container_name: consul-3
+    command: ["agent", "-config-dir=/data/active/consul-3"]
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "consul", "info"]

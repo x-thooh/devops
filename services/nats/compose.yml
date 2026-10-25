@@ -1,0 +1,43 @@
+# 手写骨架：不写 image / logging / restart / TZ / networks / IP
+services:
+  nats-1:
+    x-image: nats
+    profiles: ["nats"]
+    container_name: nats-1
+    command: ["-c", "/data/active/nats-1/nats.conf"]
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8222/healthz >/dev/null"]
+
+  nats-2:
+    x-image: nats
+    profiles: ["nats"]
+    container_name: nats-2
+    command: ["-c", "/data/active/nats-2/nats.conf"]
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8222/healthz >/dev/null"]
+
+  nats-3:
+    x-image: nats
+    profiles: ["nats"]
+    container_name: nats-3
+    command: ["-c", "/data/active/nats-3/nats.conf"]
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8222/healthz >/dev/null"]
+
+  # exporter 用 compose 服务名（不重复 IP）；solo 下 nats-2/3 未起只会记连接失败
+  nats-exporter:
+    x-image: nats_exporter
+    profiles: ["nats"]
+    container_name: nats-exporter
+    command:
+      - "-jsz"
+      - "all"
+      - "http://nats-1:8222"
+      - "http://nats-2:8222"
+      - "http://nats-3:8222"

@@ -1,0 +1,13 @@
+# 手写骨架：不写 image / logging / restart / TZ / networks / IP
+# 无状态：数据源与面板全部走 provisioning（重建即恢复）
+services:
+  grafana:
+    x-image: grafana
+    profiles: ["grafana"]
+    container_name: grafana
+    env_file: ./data/active/grafana.env
+    volumes:
+      - ./data:/data
+      - ./data/active/grafana/provisioning:/etc/grafana/provisioning:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health >/dev/null"]

@@ -9,9 +9,8 @@
 
 | 项 | 状态 |
 |---|---|
-| 已有内容 | `docs/`（方案与决策文档） |
-| 尚未创建 | `services/`、`base/`、`stock/`、`scripts/`、`Makefile`、`env/`（**P0 交付物**，plan §13）；`docs/stacks.md`（每期沉淀） |
-| 当前版本 | **plan v4.3**：14 域 / 16 目录 / 17 部署单元 / 27 → 70 容器（Nacos 3.x：server×3 + console） |
+| 已有内容 | `docs/`（方案与决策文档）；`base/`、`stock/network.ini`、`scripts/`（ini 解析 / render-all / doctor / stack / tier）、`Makefile`、`env/.env.example`、`README.md`；**17 个组件目录**（nginx / pg / redis / mysql / mongo / kafka / rocketmq / rabbitmq / etcd / consul / nats / nacos / prometheus / alertmanager / grafana / jaeger / docsify），`docs/stacks.md` 每栈一章 |
+| 当前版本 | **plan v4.5**：15 域 / 17 目录 / 18 部署单元 / 28 → 71 容器（Nacos 3.x：server×3 + console；v4.4 加 docsify） |
 
 ### 0.1 文档层级（只读与可写要分清）
 
@@ -32,12 +31,14 @@
 | `base/anchors.yml` | `logging` / `restart` / `TZ` / 健康检查默认 | 组件里出现同类字段 = 打回 |
 | `base/images.yml` | 镜像唯一清单（官方源，`.env` 可覆盖） | compose 内禁止字面量 `image:` |
 | `base/jvm/heap.env` | JVM 限堆 | kafka / rocketmq 引用 |
+| `services/<stack>/compose.yml` | **手写骨架**（输入，入库） | 只写 `services` / `container_name` / `profiles` / `volumes` / `healthcheck` / `x-image`；禁止 `image` / `restart` / `logging` / `networks` / `TZ` |
 | `services/<stack>/config/` | 配置**模板**（入库） | 只放模板，`render.sh` 产物不许写进来 |
-| `services/<stack>/data/` | 运行时状态（gitignore） | 永不入库；`**/data/` 一条规则覆盖 |
-| `compose.yml`、`compose.generated.yml` | 聚合入口（生成物） | 手改无效，`render-all.sh` 会覆盖 |
+| `services/<stack>/data/` | 运行时状态（gitignore） | 永不入库；`**/data/**` 一条规则覆盖 |
+| `.generated/<stack>.yml` | 单栈渲染结果（生成物） | 不提交；`render-all.py` 每次覆盖 |
+| `compose.yml`、`compose.generated.yml` | 根聚合入口（生成物，两份同内容） | 手改无效，`render-all.sh` 会覆盖；不提交 |
 | `services/nginx/data/conf.d/`、`*/data/**/prometheus.yml`、`sentinel.conf`、`nodes.conf` | 渲染产物 / 运行时重写 | 手改会被下一次 render 或重启冲掉 |
 
-> **一句话**：`ini` 与 `config/` 是输入；`compose.generated.yml` 与 `data/` 是输出。只改输入。
+> **一句话**：`ini`、`base/`、`services/*/compose.yml` 与 `config/` 是输入；`.generated/`、根 `compose*.yml` 与 `data/` 是输出。只改输入。
 
 ---
 
@@ -45,10 +46,10 @@
 
 | 层 | 单位 | 数量 | 你要动的文件 |
 |---|---|---|---|
-| 域 | `/24` IP 块 | 14 | `stock/network.ini` |
-| 组件目录 | `services/<name>/` | 16 | `compose.yml` + `config/` + `scripts/` |
-| 部署单元（profile） | `compose.yml` 的 `profiles` | 17 | 同上 |
-| 容器 | service | 27 / 70 | 同上 |
+| 域 | `/24` IP 块 | 15 | `stock/network.ini` |
+| 组件目录 | `services/<name>/` | 17 | `compose.yml` + `config/` + `scripts/` |
+| 部署单元（profile） | `compose.yml` 的 `profiles` | 18 | 同上 |
+| 容器 | service | 28 / 71 | 同上 |
 
 - `services/redis/` 是**唯一复合栈**（一个目录两组互斥 profile）。它成立的四条硬条件见 plan §8.0.1，**不要再造第二个**，除非四条都满足。
 - 新增组件的固定步骤：plan §17（ini 取预留块 → 建目录 → `render-all` → 可选加路由 → `doctor` 自动纳入）。
@@ -57,7 +58,7 @@
 
 ## 3. 硬规则（review 见到直接打回）
 
-> plan §6 的「三大铁律」是设计层约束（不变量不下沉 / 端口校验 / doctor 14 项）；本节是**执行层**的 7 条，两者互补。
+> plan §6 的「三大铁律」是设计层约束（不变量不下沉 / 端口校验 / doctor 15 项）；本节是**执行层**的 8 条，两者互补。
 
 1. **不变量不下沉**：`subnet` / `gateway` / `logging` / `restart` / `TZ` / 字面量 `image:` 只允许出现在 `base/`。
 2. **端口按"同一 IP 内不重复"校验**：不按宿主端口，因为除 nginx 外不发布。
@@ -66,13 +67,17 @@
 5. **宿主端口只有 `[stack.nginx]` 的 `nginx-1`**；其它 UI 一律经 `<svc>.localhost`（DEC-3 / DEC-42）。
 6. **不改 `docs/archive/`**；不在容器内用 `.localhost`（R15）。
 7. **演练只用 `docker compose stop`**，禁止 `docker kill`（DEC-17 / R12）。
+8. **容器 `Up` ≠ 集群成立**：Docker daemon 重启只复活容器，不恢复集群不变量（如 mysql 的
+   `group_replication_start_on_boot=OFF`）。按依赖顺序重跑 `make stack-up`（先 mysql 后 nacos），
+   **不要**为了省事把 `start_on_boot` 改成 `ON`（DEC-48 / plan §8.4）。
 
 ---
 
-## 4. 常用命令（目标契约，Makefile 建好后即可用）
+## 4. 常用命令（P0 已可用）
 
 ```bash
-make doctor                 # 14 项体检；按"已启用的栈"取集合
+make secrets                # 生成 env/.env（已存在则不动）
+make doctor                 # 15 项体检；按"已启用的栈"取集合（第 15 项看运行态）
 make render                 # ini → compose.generated.yml + 各栈配置
 make up / make down         # 起停当前档位（默认 A）
 make tier-s | tier-a..f     # 档位：solo 全栈 / 数据库 / 消息 / 重栈 / 组合 / 共识 / 注册配置
@@ -81,11 +86,13 @@ make stack-status S=<profile>
 make stack-reset  S=<profile>   # 只清本 profile 的 data/ 子树
 make stack-shell  S=<profile> N=<node>
 make failover-drill S=pg|redis-sentinel|redis-cluster|mysql|mongo|kafka|rocketmq
-make ui-open S=grafana|jaeger|rabbitmq|consul|prometheus|alertmanager|nacos
+make ui-open S=grafana|jaeger|rabbitmq|consul|prometheus|alertmanager|nacos|docsify
 make trace-demo             # 推一条 OTLP trace 给 jaeger
 ```
 
 > `S` 填的是**部署单元名（profile）**，不是目录名：`redis` 目录下是 `redis-sentinel` / `redis-cluster`，**没有 `S=redis`**。
+>
+> `MODE` 省略时**不是 solo**：`stack.sh` 读 `.mode-<profile>` marker 沿用当前部署形态，从没部署过才回退 solo，并打印 `# MODE 未指定 -> <mode>`（DEC-50）。要换形态必须显式写 `MODE=solo|ha`。
 
 ---
 
@@ -94,9 +101,9 @@ make trace-demo             # 推一条 OTLP trace 给 jaeger
 ```text
 1. 改输入       stock/network.ini（IP/端口/mode）或 services/<stack>/config/*.tpl
 2. make render  生成 compose + 各栈真实配置（产物都进 data/）
-3. make stack-up S=<profile> MODE=solo   ← 先 solo 证"能跑"
+3. make stack-up S=<profile> MODE=solo   ← 先 solo 证"能跑"（省略 MODE 会沿用当前形态，DEC-50）
 4. make stack-up S=<profile> MODE=ha     ← 再 ha 证"集群成立"，跑 failover-drill
-5. make doctor  14 项；失败项按提示修，不要靠手工改生成物绕过
+5. make doctor  15 项；失败项按提示修，不要靠手工改生成物绕过
 ```
 
 改完一个栈要同时更新：`docs/plan.md` 对应表格（§5 花名册 / §7 身份清单 / §9 资源）+ `docs/stacks.md` 的该栈章节（起停、验证命令、演练、重置、solo↔ha 语义差异、坑）。
@@ -107,7 +114,7 @@ make trace-demo             # 推一条 OTLP trace 给 jaeger
 
 - **语言**：中文；表格优先；章节引用一律用 `§x.y`，引用前确认目标章节存在（当前 §0–§17）。
 - **编号只增不复用**：
-  - ADR `DEC-1` … `DEC-44`（顺序即时间顺序）；
+  - ADR `DEC-1` … `DEC-50`（顺序即时间顺序）；
   - 风险 `R-n`（R9/R20/R21 已随范围删除，编号留空不复用）；
   - 决策 `D-n` / `F-n` / `N-n`（D 可作废但不重编号，如 D17）。
 - **一处决策，三处同步**：`plan §11 ADR` + `pending-decisions`（标 ✅ 已定案）+ 受影响的表格/计数。
@@ -139,6 +146,7 @@ make trace-demo             # 推一条 OTLP trace 给 jaeger
 | 某组件为什么要 HA、怎么选型 | plan §5.2 / §5.3（豁免） |
 | 身份文件与"搞错会怎样" | plan §7 |
 | 目录契约、bootstrap 探测、演练 | plan §8 |
+| daemon 重启 / 宕机后怎么恢复 | plan §8.4（DEC-48） |
 | 内存预算与限流 | plan §9 |
 | 入口域名与路由 | plan §15 |
 | 观测四栈（prom / am / grafana / jaeger） | plan §16 |

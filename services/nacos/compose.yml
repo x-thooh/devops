@@ -1,0 +1,61 @@
+# 手写骨架：不写 image / logging / restart / TZ / networks / IP
+# 3.x：server 只管 API（8848/9848/9849/7848），console 为无状态前端（8080）
+# 数据全部在 MySQL（solo → mysql-1:3306，ha → mysql-router-1:6446）
+services:
+  nacos-server-1:
+    x-image: nacos
+    profiles: ["nacos"]
+    container_name: nacos-server-1
+    env_file: ./data/active/nacos-server-1.env
+    volumes:
+      - ./data:/data
+      - ./data/nacos-server-1/logs:/home/nacos/logs
+    healthcheck:
+      # 3.x 禁用了 v1 console health API；actuator 是唯一免鉴权的严格探针（-f 让 404/5xx 判失败）
+      test: ["CMD-SHELL", "curl -sf -o /dev/null http://127.0.0.1:8848/nacos/actuator/prometheus"]
+      interval: 10s
+      retries: 12
+      start_period: 120s
+
+  nacos-server-2:
+    x-image: nacos
+    profiles: ["nacos"]
+    container_name: nacos-server-2
+    env_file: ./data/active/nacos-server-2.env
+    volumes:
+      - ./data:/data
+      - ./data/nacos-server-2/logs:/home/nacos/logs
+    healthcheck:
+      # 3.x 禁用了 v1 console health API；actuator 是唯一免鉴权的严格探针（-f 让 404/5xx 判失败）
+      test: ["CMD-SHELL", "curl -sf -o /dev/null http://127.0.0.1:8848/nacos/actuator/prometheus"]
+      interval: 10s
+      retries: 12
+      start_period: 120s
+
+  nacos-server-3:
+    x-image: nacos
+    profiles: ["nacos"]
+    container_name: nacos-server-3
+    env_file: ./data/active/nacos-server-3.env
+    volumes:
+      - ./data:/data
+      - ./data/nacos-server-3/logs:/home/nacos/logs
+    healthcheck:
+      # 3.x 禁用了 v1 console health API；actuator 是唯一免鉴权的严格探针（-f 让 404/5xx 判失败）
+      test: ["CMD-SHELL", "curl -sf -o /dev/null http://127.0.0.1:8848/nacos/actuator/prometheus"]
+      interval: 10s
+      retries: 12
+      start_period: 120s
+
+  nacos-console:
+    x-image: nacos
+    profiles: ["nacos"]
+    container_name: nacos-console
+    env_file: ./data/active/nacos-console.env
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/ >/dev/null"]
+      interval: 10s
+      retries: 12
+      start_period: 120s

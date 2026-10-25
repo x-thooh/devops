@@ -1,0 +1,143 @@
+# 复合栈：两个互斥 profile（plan §8.0.1 / DEC-31）
+# 每个 service 必须带且只带一个 profile；两组共享同一份 data/ 挂载，但各自子树隔离
+services:
+  redis-master:
+    x-image: redis
+    profiles: ["redis-sentinel"]
+    container_name: redis-master
+    command: ["redis-server", "/data/active/redis-master/redis.conf"]
+    env_file: ["./data/active/redis-master.env"]
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+
+  redis-replica-1:
+    x-image: redis
+    profiles: ["redis-sentinel"]
+    container_name: redis-replica-1
+    command: ["redis-server", "/data/active/redis-replica-1/redis.conf"]
+    env_file: ["./data/active/redis-replica-1.env"]
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+
+  redis-replica-2:
+    x-image: redis
+    profiles: ["redis-sentinel"]
+    container_name: redis-replica-2
+    command: ["redis-server", "/data/active/redis-replica-2/redis.conf"]
+    env_file: ["./data/active/redis-replica-2.env"]
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+
+  sentinel-1:
+    x-image: redis
+    profiles: ["redis-sentinel"]
+    container_name: sentinel-1
+    command: ["redis-server", "/data/active/sentinel-1/sentinel.conf", "--sentinel"]
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -p 26379 ping | grep -q PONG"]
+
+  sentinel-2:
+    x-image: redis
+    profiles: ["redis-sentinel"]
+    container_name: sentinel-2
+    command: ["redis-server", "/data/active/sentinel-2/sentinel.conf", "--sentinel"]
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -p 26379 ping | grep -q PONG"]
+
+  sentinel-3:
+    x-image: redis
+    profiles: ["redis-sentinel"]
+    container_name: sentinel-3
+    command: ["redis-server", "/data/active/sentinel-3/sentinel.conf", "--sentinel"]
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -p 26379 ping | grep -q PONG"]
+
+  redis-sentinel-exporter:
+    x-image: redis_exporter
+    profiles: ["redis-sentinel"]
+    container_name: redis-sentinel-exporter
+    env_file: ["./data/active/redis-sentinel-exporter.env"]
+
+  rc-1:
+    x-image: redis
+    profiles: ["redis-cluster"]
+    container_name: rc-1
+    command: ["redis-server", "/data/active/rc-1/redis.conf"]
+    env_file: ["./data/active/rc-1.env"]
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+
+  rc-2:
+    x-image: redis
+    profiles: ["redis-cluster"]
+    container_name: rc-2
+    command: ["redis-server", "/data/active/rc-2/redis.conf"]
+    env_file: ["./data/active/rc-2.env"]
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+
+  rc-3:
+    x-image: redis
+    profiles: ["redis-cluster"]
+    container_name: rc-3
+    command: ["redis-server", "/data/active/rc-3/redis.conf"]
+    env_file: ["./data/active/rc-3.env"]
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+
+  rc-1r:
+    x-image: redis
+    profiles: ["redis-cluster"]
+    container_name: rc-1r
+    command: ["redis-server", "/data/active/rc-1r/redis.conf"]
+    env_file: ["./data/active/rc-1r.env"]
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+
+  rc-2r:
+    x-image: redis
+    profiles: ["redis-cluster"]
+    container_name: rc-2r
+    command: ["redis-server", "/data/active/rc-2r/redis.conf"]
+    env_file: ["./data/active/rc-2r.env"]
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+
+  rc-3r:
+    x-image: redis
+    profiles: ["redis-cluster"]
+    container_name: rc-3r
+    command: ["redis-server", "/data/active/rc-3r/redis.conf"]
+    env_file: ["./data/active/rc-3r.env"]
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+
+  redis-cluster-exporter:
+    x-image: redis_exporter
+    profiles: ["redis-cluster"]
+    container_name: redis-cluster-exporter
+    env_file: ["./data/active/redis-cluster-exporter.env"]

@@ -1,0 +1,54 @@
+# 手写骨架：不写 image / logging / restart / TZ / networks / IP
+# ha：broker×3 组成一个 DLedger 组（同 brokerName，Raft 自动选主）
+services:
+  rmq-namesrv-1:
+    x-image: rocketmq
+    profiles: ["rocketmq"]
+    container_name: rmq-namesrv-1
+    command: ["sh", "mqnamesrv"]
+    environment:
+      JAVA_OPT_EXT: "-Xms256m -Xmx256m"
+
+  rmq-namesrv-2:
+    x-image: rocketmq
+    profiles: ["rocketmq"]
+    container_name: rmq-namesrv-2
+    command: ["sh", "mqnamesrv"]
+    environment:
+      JAVA_OPT_EXT: "-Xms256m -Xmx256m"
+
+  rmq-broker-1:
+    x-image: rocketmq
+    profiles: ["rocketmq"]
+    container_name: rmq-broker-1
+    command: ["sh", "mqbroker", "-c", "/data/active/rmq-broker-1/broker.conf"]
+    environment:
+      JAVA_OPT_EXT: "-Xms512m -Xmx512m -Xmn256m"
+    volumes:
+      - ./data:/data
+
+  rmq-broker-2:
+    x-image: rocketmq
+    profiles: ["rocketmq"]
+    container_name: rmq-broker-2
+    command: ["sh", "mqbroker", "-c", "/data/active/rmq-broker-2/broker.conf"]
+    environment:
+      JAVA_OPT_EXT: "-Xms512m -Xmx512m -Xmn256m"
+    volumes:
+      - ./data:/data
+
+  rmq-broker-3:
+    x-image: rocketmq
+    profiles: ["rocketmq"]
+    container_name: rmq-broker-3
+    command: ["sh", "mqbroker", "-c", "/data/active/rmq-broker-3/broker.conf"]
+    environment:
+      JAVA_OPT_EXT: "-Xms512m -Xmx512m -Xmn256m"
+    volumes:
+      - ./data:/data
+
+  rmq-exporter:
+    x-image: rocketmq_exporter
+    profiles: ["rocketmq"]
+    container_name: rmq-exporter
+    env_file: ./data/active/rmq-exporter.env
