@@ -20,7 +20,7 @@ usage() {
     cat <<'EOF'
 usage: scripts/stack.sh <action> <profile> [solo|ha] [node]
 
-  up       render + docker compose up -d --wait（按 ini 的 mode 选择 service）
+  up       render + 起容器 + bootstrap + 等健康（按 ini 的 mode 选择 service）
   stop     docker compose stop（演练用，不触发 restart）
   rm       docker compose rm -sf（只删本 profile 的容器）
   status   容器状态 + 栈自带 status.sh
@@ -163,8 +163,14 @@ case "${action}" in
         pre
         sync_mode
         echo "starting ${profile} (${mode}): ${services[*]}"
-        compose up -d --wait --wait-timeout 180 ${recreate[@]+"${recreate[@]}"} "${services[@]}"
+        # 两段式：先起容器（不等健康）-> bootstrap -> 再等健康。
+        # 单段 --wait 会把「要 bootstrap 才转健康」的栈锁死：mysql 实测 down 后三个节点
+        # 的 MGR 全是 OFFLINE，而 Router 只有 metadata cache 里看到 ONLINE primary 才监听
+        # 6446 -> --wait 超时失败 -> bootstrap 永远轮不到（DEC-52）。
+        # bootstrap 自己带就绪轮询（各栈 20-60 次），所以第一段不等健康是安全的。
+        compose up -d ${recreate[@]+"${recreate[@]}"} "${services[@]}"
         bootstrap
+        compose up -d --wait --wait-timeout 180 "${services[@]}"
         compose ps "${services[@]}"
         ;;
     stop)
@@ -197,8 +203,9 @@ case "${action}" in
         write_marker
         render
         pre
-        compose up -d --wait --wait-timeout 180 "${services[@]}"
+        compose up -d "${services[@]}"
         bootstrap
+        compose up -d --wait --wait-timeout 180 "${services[@]}"
         ;;
     shell)
         target="${node:-${services[0]}}"

@@ -97,7 +97,14 @@ if any_online_node >/dev/null; then
         sql "${node}" "START GROUP_REPLICATION" >/dev/null 2>&1 || true
     done
 else
-    # ---- 首次成组：清 GTID → 建 repl 用户与 recovery channel → bootstrap → join
+    # ---- 首次成组：解只读 → 清 GTID → 建 repl 用户与 recovery channel → bootstrap → join
+    # down / 宿主机重启后，单主 MGR 会让三个节点都带 super_read_only=ON 回来
+    #（运行时行为，不落 mysqld-auto.cnf），而 repl 用户必须在成组之前建 —— 不解锁
+    # 就是 ERROR 1290 + set -e 中断：MGR 起不来 -> Router 6446 不监听 -> 依赖它的栈全挂。
+    # join 后 MGR 自己会把 SECONDARY 置回 ON，这里解锁不破坏单主语义。
+    for node in "${NODES[@]}"; do
+        sql "${node}" "SET GLOBAL super_read_only=OFF; SET GLOBAL read_only=OFF" >/dev/null
+    done
     for node in "${NODES[@]}"; do
         gtids="$(sql "${node}" "SELECT @@GLOBAL.gtid_executed")"
         if [[ -n "${gtids}" ]]; then
