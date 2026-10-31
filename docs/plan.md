@@ -1,9 +1,9 @@
-# devops 本地多栈测试环境 · 总体方案 v4.5（15 域，按组件拆目录）
+# devops 本地多栈测试环境 · 总体方案 v4.6（15 域，按组件拆目录）
 
 > 单机（macOS + OrbStack）承载 **15 个 IP 域 / 17 个组件目录 / 18 个部署单元**：
-> **solo 形态**（单节点，日常调试）与 **ha 形态**（集群/主从，验证台架，≈ 71 容器）双轨并存，
+> **solo 形态**（单节点，日常调试）与 **ha 形态**（集群/主从，验证台架，≈ 70 容器）双轨并存，
 > 全部同一网络且各带固定 IP，配置与运行时数据全部位于本仓库，
-> **每个组件（除明确豁免的工具类）的 ha 形态都具备集群或主从**，
+> **有集群语义的组件在 ha 形态都具备集群或主从；无状态组件（§5.3）明确单实例，不伪装 HA**，
 > 并统一经 `<服务>.localhost` 子域从宿主访问（§15），指标汇入可观测性域（§16）。
 >
 > **v4.0 是恢复版本**：v3.x 曾把范围缩到"只保留 Redis"，现按**同一条组件化规则**把 13 个域加回来；
@@ -16,6 +16,10 @@
 > 运行态第 15 项与 daemon 重启恢复口径（DEC-48）、sentinel 口不再进指标（DEC-49）、
 > 单栈命令 MODE 缺省沿用当前部署形态（DEC-50）、工具链与依赖由 `mise.toml` + `.venv` 固定（DEC-51）、
 > `stack-up` 改为「起容器 → bootstrap → 等健康」两段式（DEC-52）。
+> **v4.6 删掉 nginx 的假 ha**：去掉 `nginx-2`，入口退回单实例（DEC-53）——两台 nginx 既无 VIP、
+> 又在同一台宿主同一个 daemon 上，`MODE=ha` 换不来任何切换能力，只是把"没做 HA"说成了 HA。
+> 同一版顺手统一命名：**单实例栈的节点不带序号**（`nginx-1 → nginx`、`docsify-1 → docsify`，DEC-54），
+> `-1` 只留给真的存在第 2 个节点的栈。
 > 缩容期的文档归档在 `docs/archive/plan-v3.2-redis-only.md`，13 域时代的原始设计在 `docs/archive/plan-v2.3-13stacks.md`。
 
 ---
@@ -48,8 +52,9 @@
 | **v4.1** | v4.0 + **Nacos 域**（`.13.x`，3 节点；配置存 mysql 栈） | 29 / 75 | 5.6 / 15.8 GB | 补上服务注册/配置中心 |
 | **v4.2** | v4.1 − **mailpit / adminer / minio**（三个接入面工具），edge 只留 nginx | 26 / 69 | 5.1 / 14.5 GB | 去掉无消费者与可替代的工具；全量 ha 回到 15.7 GB 以内 |
 | **v4.3** | v4.2 + **Nacos 升 3.x**：`nacos-server`×3 + **`nacos-console`×1**（控制台独立端口 8080），schema 用 3.x 脚本 | **27 / 70** | **5.3 / 14.7 GB** | 跟官方 3.x 的 server/console 拆分；端口表、路由、身份清单、probe 全部按 3.x 更新 |
-| **v4.4（上一版）** | v4.3 + **第 15 域 `.20.x` docsify**（`docsify-1`×1，仓库 `docs/` 只读浏览，`docsify.localhost`） | **28 / 71** | **5.35 / 14.75 GB** | 文档从"打开文件读"变成"站点读"；无状态、HA 豁免，只增 1 容器 / 0.05 GB |
-| **v4.5（本版）** | 范围不变；**观测与体检口径修正 + 工具链固定**：抓取目标按已部署形态过滤（DEC-47）、doctor 第 15 项运行态健康 + daemon 重启恢复口径（DEC-48）、sentinel 口不进指标（DEC-49）、`stack.sh` 的 MODE 缺省改为沿用当前部署形态（DEC-50）、Python 由 `mise.toml` + 仓库内 `.venv` 固定（DEC-51）、`stack-up` 两段式启动让恢复口径真能重放（DEC-52） | 28 / 71（不变） | 5.35 / 14.75 GB（不变） | 从"全停也能绿"变成"绿了才算真跑起来"；假 down / 假 `redis_up 0` / 面板未 provision / ha 部署被当 solo 查 / 换个 shell 就选错解释器 / "重跑 stack-up 即恢复"对 mysql 名实不符，六类"看起来正常"均被消除 |
+| **v4.4（上一版）** | v4.3 + **第 15 域 `.20.x` docsify**（`docsify`×1，仓库 `docs/` 只读浏览，`docsify.localhost`） | **28 / 71** | **5.35 / 14.75 GB** | 文档从"打开文件读"变成"站点读"；无状态、HA 豁免，只增 1 容器 / 0.05 GB |
+| **v4.5** | 范围不变；**观测与体检口径修正 + 工具链固定**：抓取目标按已部署形态过滤（DEC-47）、doctor 第 15 项运行态健康 + daemon 重启恢复口径（DEC-48）、sentinel 口不进指标（DEC-49）、`stack.sh` 的 MODE 缺省改为沿用当前部署形态（DEC-50）、Python 由 `mise.toml` + 仓库内 `.venv` 固定（DEC-51）、`stack-up` 两段式启动让恢复口径真能重放（DEC-52） | 28 / 71（不变） | 5.35 / 14.75 GB（不变） | 从"全停也能绿"变成"绿了才算真跑起来"；假 down / 假 `redis_up 0` / 面板未 provision / ha 部署被当 solo 查 / 换个 shell 就选错解释器 / "重跑 stack-up 即恢复"对 mysql 名实不符，六类"看起来正常"均被消除 |
+| **v4.6（本版）** | v4.5 − **`nginx-2`**：入口退回单实例（DEC-53），ini 少 1 行、ha 少 1 容器；`doctor` 第 11 项 nginx 期望 `entry=1`；单实例栈节点名去掉序号（`nginx` / `docsify`，DEC-54） | **28 / 70** | **5.35 / 14.72 GB** | 删掉的是**假 HA**：双入口既无 VIP 也无共享状态，两台容器同宿主同 daemon，`MODE=ha` 不产生任何切换能力（与 DEC-30 同类）；`mode=both` 让它与 docsify 同类，两形态同一节点。命名同步：没有第 2 个节点就不该有 `-1` |
 
 > v3.0 缩容的直接代价是"无法验证跨组件交互"（缓存↔DB、消息堆积→缓存回填），v4.0 把该能力恢复；
 > 代价是内存重回 14.7 GB / 可见 15.7 GB —— 六档纪律（§9.1）与 §9.2 限流重新变成硬约束。
@@ -68,7 +73,7 @@
 | `include` + `profiles` 透传 | ✅ 无 profile 时服务为空 | 组件文件必须自带 `profiles` |
 | 组件内 `./.data`、`./config` 相对路径基准 | ✅ 以**组件文件所在目录**为基准 | 组件可整体搬迁，高内聚成立 |
 | 物理内存 / CPU | 48 GB / 14 core | — |
-| Docker VM 可见内存 | **15.7 GB** | 全量 ha **14.75 GB**（余量 ≈ 0.95 GB）→ 装得下，但**仍禁止常驻**（§9.1） |
+| Docker VM 可见内存 | **15.7 GB** | 全量 ha **14.72 GB**（余量 ≈ 0.98 GB）→ 装得下，但**仍禁止常驻**（§9.1） |
 
 > ⚠️ 前提声明：宿主免端口映射依赖 OrbStack 的容器 IP 路由（`docker.expose_ports_to_lan: true`）。
 > 换到 Colima / Docker Desktop 默认配置时，**Sentinel 公告的主节点 IP、Cluster 的 `nodes.conf` 地址、Patroni/MySQL Router 的选主地址、Kafka 的 `advertised.listeners`** 都会失效（§13 R1）。
@@ -92,7 +97,7 @@
 | 域（domain） | `/24` IP 块 | 15 | IP 段分配；域内组件共享网关与尾号约定 |
 | **组件目录（stack dir）** | `services/<name>/` | **17** | 配置 / 脚本 / 数据的**物理归属**（删栈 = `rm -rf` 一个目录） |
 | **部署单元（profile）** | `compose.yml` 里的一组 `profiles` | **18** | 起停 / 重置 / 形态切换的最小单位 |
-| 容器（container） | service | 28 / 71 | 进程与资源占用（solo / ha） |
+| 容器（container） | service | 28 / 70 | 进程与资源占用（solo / ha） |
 
 17 个目录 → 18 个部署单元，因为 `services/redis/` 是**复合栈**（一个目录两组互斥 profile）。
 
@@ -166,6 +171,7 @@ networks:
 > | `.12.x` **observability** | `prometheus` `.11–.12`、`alertmanager` `.21`、`grafana` `.31`、`jaeger` `.32` | 观测四栈共享一个观测域，自监控映射表按该块生成 |
 >
 > `.0.x` 现在只放 `nginx`（入口），已从功能域退化为单组件域。IP 全 ini 唯一，`doctor.sh` 第 1/2 项照常校验。
+> **`.0.12` 因 v4.6 删除 `nginx-2` 而空闲**（DEC-53），后续 edge 组件可按 §17 取用；不设预留标记，ini 无重复即可。
 
 ---
 
@@ -183,10 +189,10 @@ devops/
 │   ├── images.yml                  # ★ 镜像唯一清单（官方源；.env 可逐个覆盖，DEC-39）
 │   └── jvm/heap.env                # 统一 JVM 限堆变量（kafka / rocketmq）
 ├── services/
-│   ├── nginx/                      # 部署单元 nginx：nginx-1 (.0.11, both) + nginx-2 (.0.12, ha)
+│   ├── nginx/                      # 部署单元 nginx：nginx (.0.11, both)，单实例入口（无 ha，DEC-53）
 │   │   ├── compose.yml
 │   │   ├── config/nginx.conf       # 主配置（log_format / gzip / connection_upgrade map）
-│   │   ├── scripts/{render,status,reset}.sh      # 无 bootstrap（无状态）
+│   │   ├── scripts/{render,bootstrap,status,reset}.sh  # bootstrap = reload（无状态，不建集群）
 │   │   └── .data/conf.d/            # 生成物：每个 [routes] 行 → <host>.conf
 │   ├── redis/                      # ★ 复合栈：一个目录，两个互斥 profile
 │   │   ├── compose.yml             # profiles: redis-sentinel | redis-cluster
@@ -286,7 +292,7 @@ devops/
 │   │   ├── config/sampling.json    # 采样策略
 │   │   ├── scripts/{render,bootstrap,status,reset}.sh
 │   │   └── .data/jaeger/badger/     # trace 存储（TTL 72h）
-│   └── docsify/                    # docsify-1 (.20.11, both)：仓库 docs/ 只读浏览，HA 豁免
+│   └── docsify/                    # docsify (.20.11, both)：仓库 docs/ 只读浏览，HA 豁免
 │       ├── compose.yml             # 嵌套只读挂载：docs/ → /docs/content；.data/site → /docs
 │       ├── config/index.html.tpl   # 站点壳模板（@TITLE@ / @BASEPATH@ 由 render 替换）
 │       ├── config/assets/          # 从镜像 4.4.4 导出的离线前端资产（升版本时重新导出）
@@ -318,7 +324,8 @@ env/.env
 
 > **`config/` 只放模板，`render.sh` 的产物一律落 `.data/`**（DEC-11）：nginx 的路由 `conf.d/`、prometheus 的 `prometheus.yml`、
 > sentinel 的 `sentinel.conf`、kafka 的 `server.properties`、kafka 的 `meta.properties` 都在 `.data/` 下——它们要么运行时重写，要么含渲染出的 IP，不能入库。
-> 每个目录的 `scripts/` 按需裁剪：无状态的栈没有 `bootstrap`（nginx / grafana）。
+> 每个目录的 `scripts/` 按需裁剪：无状态的栈（nginx / grafana）没有集群组建，
+> `bootstrap` 只做「配置重载 / 就绪轮询」（nginx 是 `nginx -s reload`，grafana 是 `/api/health` 轮询）。
 >
 > **生成契约（P0 起）**：`services/<stack>/compose.yml` 是**手写骨架**，只写
 > `services` / `container_name` / `profiles` / `volumes` / `healthcheck` 与 `x-image`；
@@ -335,7 +342,7 @@ env/.env
 
 | 域 | 目录 | 容器（solo → ha） | 形态 | 内存 solo / ha |
 |---|---|---|---|---|
-| `.0.x` edge | `nginx` | nginx-1 → +nginx-2 | 双入口（无 VIP） | 0.02 / 0.05 GB |
+| `.0.x` edge | `nginx` | nginx（单实例） | 单实例入口（无状态，HA 豁免，DEC-53）；节点名不带序号（DEC-54） | 0.02 / 0.02 GB |
 | `.1.x` pg | `pg` | postgres 1 + exporter → patroni×3 + dcs×3 + haproxy×2 + exporter | Patroni 自动故障转移 | 0.33 / 1.28 GB |
 | `.2.x` redis-sentinel | `redis` | redis 1 + exporter → 1M + 2R + 3S + exporter | 哨兵自动切换 | 0.10 / 0.34 GB |
 | `.3.x` redis-cluster | `redis` | redis 1 + exporter → 3M + 3R + exporter | 分片 + 副本（16384 slots） | 0.10 / 0.48 GB |
@@ -352,8 +359,8 @@ env/.env
 | `.12.x` obs | `grafana` | grafana | 面板（provisioning） | 0.25 / 0.25 GB |
 | `.12.x` obs | `jaeger` | jaeger | 链路追踪（OTLP + Badger + UI） | 0.15 / 0.15 GB |
 | `.13.x` nacos | `nacos` | server 1 + console 1 → server×3 + console×1 | 服务注册 + 配置中心（3.x server/console 拆分；库复用 mysql 栈） | 0.55 / 1.35 GB |
-| `.20.x` docs | `docsify` | docsify-1（两形态同一节点） | 仓库 `docs/` 只读浏览（无状态，HA 豁免，DEC-46） | 0.05 / 0.05 GB |
-| **合计** | **17 目录 / 18 单元** | **28 → 71 个容器** | | **5.35 / 14.75 GB** |
+| `.20.x` docs | `docsify` | docsify（单实例） | 仓库 `docs/` 只读浏览（无状态，HA 豁免，DEC-46）；节点名不带序号（DEC-54） | 0.05 / 0.05 GB |
+| **合计** | **17 目录 / 18 单元** | **28 → 70 个容器** | | **5.35 / 14.72 GB** |
 
 > `redis-sentinel` 与 `redis-cluster` **同属 `services/redis/`**（复合栈，§2.1），两个 profile 互斥；
 > 其余每行 = 一个目录。`.0.x` 只剩 `nginx`（v3.2 从原 `core/` 拆出四个，v4.2 删掉其中三个工具）。
@@ -370,7 +377,7 @@ env/.env
 | `both` | solo 与 ha 共用同一节点身份（solo 时的单实例就是它） |
 | `solo` | 仅属于 solo 拓扑（当前无此类行；保留语义） |
 
-> 行内只写 4 列（`name | ip | ports | role`）= **省略 mode，即 mode=ha**；本表 43 行如此（其余 28 行为 `both`），只有 `both` 节点才写第 5 列。
+> 行内只写 4 列（`name | ip | ports | role`）= **省略 mode，即 mode=ha**；本表 42 行如此（其余 28 行为 `both`），只有 `both` 节点才写第 5 列。
 > 这样写是为了让"ha-only 成员"成为默认，减少一处手工维护。
 
 **solo 复用该栈 `.11` 节点的 IP**（两形态互斥、不同时运行），但**配置模板与数据目录独立**（`config/solo/`、`.data/<group>/solo/`），互不污染。
@@ -381,9 +388,8 @@ subnet  | 172.28.0.0/16 | |
 gateway | 172.28.0.1    | |
 
 [stack.nginx]
-# 只有 nginx-1 在 compose 里声明 ports:（宿主发布，ENTRY_HTTP_PORT 可覆盖）；nginx-2 仅容器内监听
-nginx-1          | 172.28.0.11 | 80,443     | entry | both
-nginx-2          | 172.28.0.12 | 80,443     | entry
+# 入口只有单实例（DEC-53）：只有它在 compose 里声明 ports:（宿主发布，ENTRY_HTTP_PORT 可覆盖）
+nginx            | 172.28.0.11 | 80,443     | entry | both
 
 [stack.pg]
 patroni-1        | 172.28.1.11 | 5432,8008  | leader  | both
@@ -489,7 +495,7 @@ jaeger           | 172.28.12.32 | 16686,4317,4318,8888,13133 | trace | both
 
 # docs 域（§17 预留块 .20–.29 启用的第一个）：仓库 docs/ 的只读浏览入口
 [stack.docsify]
-docsify-1        | 172.28.20.11 | 3000      | docs  | both
+docsify          | 172.28.20.11 | 3000      | docs  | both
 
 # 宿主访问入口（§15）：host | upstream_ip | port | base-path 能力
 [routes]
@@ -507,7 +513,7 @@ docsify.localhost      | 172.28.20.11 | 3000  | subdomain-only
 
 | 组件 | 最小 HA 拓扑 | 选型理由 | 关键机制 / 身份文件 |
 |---|---|---|---|
-| **nginx** | ×2（`.0.11/.12`），各自独立 IP | 单机无共享存储，做 VIP 是伪需求；**客户端用双地址 + 健康探测**即可 | `server_name` 按 `[routes]` 生成；`keepalived` 仅作可选 profile |
+| **nginx** | 单实例（**豁免**） | 入口只做反代与路由分发；单机下双实例既无 VIP 也无共享状态，两副本在同一故障域 = 假 HA（DEC-53） | `server_name` 按 `[routes]` 生成；`bootstrap.sh` 做 `nginx -t` + `nginx -s reload` |
 | **postgres** | Patroni ×3 + **自带 etcd DCS ×3** + HAProxy ×2 | 只有流复制是"主从"，没有故障转移；Patroni 是流复制的事实标准 | `patroni.yml`（`bootstrap.dcs`、`pg_hba`）；DCS 内 `/service/pg/leader` |
 | **redis** | 哨兵 1M+2R+3S / 集群 3M+3R | 两种语义不同，都要有（同一目录两组互斥 profile，§2.1） | `sentinel.conf`（运行时重写）、`nodes.conf` |
 | **mysql** | MGR ×3 + Router ×2 | 异步主从切换要人工；MGR 单主自动选主 + Router 自动感知 | `server_id` 唯一、GTID、`group_replication_group_seeds` |
@@ -533,14 +539,14 @@ docsify.localhost      | 172.28.20.11 | 3000  | subdomain-only
 |---|---|
 | exporter（pg / mysql / mongo / kafka / rocketmq / redis） | 无状态只读，重启无影响 |
 | bootstrap 一次性容器（如 MySQL Router 引导） | 天然幂等，不参与拓扑 |
-| nginx VIP（keepalived） | **默认不启用**：单机故障域相同，VRRP 无法验证真实切换，只增加调试噪音 |
+| nginx 双实例 / VIP（keepalived） | **不做**：单机故障域相同，VRRP 无法验证真实切换；v4.6 已删 `nginx-2`，入口退回单实例（DEC-53），节点名随之去掉序号（DEC-54），双实例只增加调试噪音 |
 | prometheus / alertmanager / grafana | **部分豁免**：Prom 双实例是冗余采集（无状态同步），Grafana 无状态（provisioning 即恢复），AM 单实例；真 HA（Thanos/VictoriaMetrics、AM gossip ×3）列入 N 级（§16.3） |
 | jaeger | **存储侧豁免**：Badger 单写者；采集侧虽无状态，但两份不共享存储只会得到互不可见的 trace（假 HA，比明确单实例更危险） |
 | docsify | **全量豁免**：只读静态浏览，内容就是仓库 `docs/`；双实例得同一份数据，无故障转移可言。`mode=both` 使 solo / ha 完全相同（见 §5.5） |
 
 ### 5.4 单机"集群"的诚实边界
 
-71 个容器共享**同一内核、同一磁盘、同一时钟**，因此本环境可验证：
+70 个容器共享**同一内核、同一磁盘、同一时钟**，因此本环境可验证：
 
 - ✅ 拓扑配置是否正确（成员身份、quorum、seeds、公告地址、slot 分布）
 - ✅ 协议行为是否正确（复制、选主、消费位点、重定向）
@@ -559,7 +565,7 @@ docsify.localhost      | 172.28.20.11 | 3000  | subdomain-only
 
 | 部署单元 | solo 拓扑 | solo 内存 | ha 内存 | 适用场景 |
 |---|---|---|---|---|
-| nginx | nginx 1 | 0.02 | 0.05 | solo：本地入口；ha：验证双入口 |
+| nginx | nginx 1 | 0.02 | 0.02 | 单实例入口；两形态同一节点（无 ha，DEC-53） |
 | pg | postgres 1 + exporter | 0.33 | 1.28 | solo：写 SQL；ha：验证 Patroni 切换 |
 | redis-sentinel | redis 1 + exporter | 0.10 | 0.34 | solo：缓存调试；ha：验证哨兵 |
 | redis-cluster | redis 1（cluster 关闭）+ exporter | 0.10 | 0.48 | solo：key 设计；ha：验证 slot |
@@ -647,7 +653,7 @@ make stack-switch S=pg MODE=ha # 先停当前形态再起目标形态（数据�
 | 3 | 同一 IP 的端口集无重复（支持 `a-b` 范围写法，按区间展开后比较） | 报错 |
 | 4 | 各组件 `compose.yml` 的 `ipv4_address` ⊆ ini 且一致（防手写漂移）；**镜像引用必须来自 `base/images.yml`**（出现字面量 `image:` 即失败） | IP 漂移 → 提示重跑 `render-all`；字面量镜像 → 提示改 `images.yml` |
 | 5 | 每个 service 均声明 `profiles`（无 profile 的服务会被任何 `up` 起，破坏复合栈互斥） | 失败 |
-| 6 | 宿主端口仅出现在 `[stack.nginx]` 且**只有 `nginx-1`** 声明 `ports:`（nginx-2 不得发布） | 失败 |
+| 6 | 宿主端口仅出现在 `[stack.nginx]` 且**只有 `nginx`** 声明 `ports:` | 失败 |
 | 7 | `docker context` 必须是 `orbstack`（方案前提） | 失败并解释原因 |
 | 8 | `172.28.0.0/16` 与宿主路由无重叠 | 失败 |
 | 9 | `env/.env` 存在且权限 `600` | 提示 |
@@ -670,7 +676,7 @@ make stack-switch S=pg MODE=ha # 先停当前形态再起目标形态（数据�
 
 | 栈 | 必须写死 | 必须持久化的状态文件 | 搞错的症状 |
 |---|---|---|---|
-| nginx | 两实例 `server_name` / 监听端口错开；`[routes]` 生成的 upstream | 无状态 | 后端全挂时无法判断入口是否存活 |
+| nginx | `server_name`（由 `[routes]` 生成）；宿主端口由 `ENTRY_HTTP_PORT` 注入 | 无状态 | 后端全挂时无法判断入口是否存活 |
 | pg (Patroni) | `scope`、`name`、`restapi`、`dcs.etcd3.hosts`、`bootstrap.dcs` | `.data/patroni-N/`（含 `postgresql0/`）、DCS 数据 | 重启后 leader 丢失 / split-brain |
 | redis-sentinel | `sentinel monitor devmaster 172.28.2.11 6379 2`；`requirepass` 与 `masterauth` **必须一致** | `.data/sentinel/sentinel-N/sentinel.conf`（**运行时重写**）、`.data/sentinel/redis-master/appendonlydir` | 切主后新主拒绝写入 |
 | redis-cluster | `cluster-enabled yes`；总线端口 = 端口 +10000；`cluster-announce-ip` = 容器 IP | `.data/cluster/<node>/nodes.conf`、AOF/RDB | 重启后忘记集群身份，需整栈重建 |
@@ -771,7 +777,7 @@ make obs / make obs-ha                        # = group-up G=observability MODE=
 | alertmanager | `curl -sf :9093/-/ready` | 200 |
 | grafana | `curl -sf :3000/api/health` | `{"database":"ok"}` |
 | jaeger | `curl -sf :8888/metrics` / `:16686/api/services` | 200 |
-| nginx | `curl -sf -H 'Host: grafana.localhost' 127.0.0.1/` | 200（路由打通） |
+| nginx | `nginx -t` + `nginx -s reload`（各运行节点） | reload 成功即新路由已载入；入口 `/healthz` 200（路由探测 502 = 已载入但上游未起，不算失败） |
 | nacos-server | `curl -sf :8848/nacos/v1/console/health/readiness`（3.x 若迁到 actuator 则用 `/nacos/actuator/health`）+ `/nacos/v1/ns/operator/metrics` | readiness `UP`；raft 有 leader；`/nacos/v1/ns/service/list` 可用 |
 | nacos-console | `curl -sf :8080/` | 200（控制台根路径） |
 | docsify | `curl -sf :3000/` + `curl -sf :3000/content/plan.md` | 两者都 200（内容 404 = `docs/` 未挂上或 render 未跑） |
@@ -850,9 +856,9 @@ make tier-s                              # 或者按档一键重放（该档已�
 | **E 共识** | nginx + etcd + consul + nats + obs(solo) | ≈ 1.4 GB |
 | **F 注册配置** | nginx + **nacos**（server×3 + console）+ **mysql** + obs(solo)（nacos 的库在 mysql；两者必须同起） | ≈ 3.7 GB |
 | **S 单人日常（solo 全栈）** | 18 个部署单元全部 solo（28 容器） | ≈ 5.35 GB |
-| ❌ 全量 ha | 18 个部署单元全部 ha（71 容器） | **≈ 14.75 GB / 可见 15.7 GB**（余量 ≈ 0.95 GB），**禁止常驻** |
+| ❌ 全量 ha | 18 个部署单元全部 ha（70 容器） | **≈ 14.72 GB / 可见 15.7 GB**（余量 ≈ 0.98 GB），**禁止常驻** |
 
-> A–F 与 S 档可常驻；全量 ha（14.75 GB）仅在"一次性全链路演练"时临时起，做完 `make down`。
+> A–F 与 S 档可常驻；全量 ha（14.72 GB）仅在"一次性全链路演练"时临时起，做完 `make down`。
 
 ### 9.2 硬性限流（不做就会炸）
 
@@ -935,7 +941,7 @@ redis_exporter: oliver006/redis_exporter:v1.67.0  # X.Y.Z：小版本会改指�
 | DEC-9 | RabbitMQ 集群基线 3 节点，队列语义由声明决定 | quorum 需要 3 副本；测试需要灵活性 |
 | DEC-10 | 数据放组件内 `data/`，不集中根目录 | 生命周期与组件一致；`**/.data/` 一条 gitignore |
 | DEC-11 | Sentinel conf / `nodes.conf` / 渲染产物放 `.data/`，config 只存模板 | 运行时重写或含渲染 IP，只读挂载必然失败 |
-| DEC-12 | 不默认使用 keepalived/VIP，nginx 双实例 + 客户端双地址 | 单机 VRRP 无法验证真实切换 |
+| DEC-12 | 不默认使用 keepalived/VIP，nginx 双实例 + 客户端双地址 | **已被 DEC-53 取代**：双实例本身也是假 HA（无 VIP、同宿主同 daemon），只保留"不做 VIP"这一半结论 |
 | DEC-13 | edge 域不放数据库 | DB 由各自 HA 栈提供，避免双份配置漂移 |
 | DEC-14 | RocketMQ 用 DLedger（Raft）3 broker | 原生主从切换需人工 |
 | DEC-16 | 各栈自带 DCS/元数据（pg 自带 etcd ×3） | 生命周期解耦：关掉 etcd 域不能拖垮 PG 选主 |
@@ -962,17 +968,19 @@ redis_exporter: oliver006/redis_exporter:v1.67.0  # X.Y.Z：小版本会改指�
 | DEC-39 | **镜像一律来自官方源，但可自定义**：唯一清单 `base/images.yml`；`render.sh` 注入各 compose；`.env` 的 `IMG_<NAME>` 可逐个覆盖，`IMAGE_PREFIX` 可整体前缀（镜像加速器/私有仓库），三者默认都为空 → **默认就是官方镜像** | 官方镜像可审计、无供应链惊喜；但国内拉取慢/企业内网需要私有仓库，所以把"换源"做成一处配置而不是散落在 16 个 compose 里。compose 内禁止字面量镜像（doctor 第 4 项） |
 | DEC-40 | **版本粒度 = `X.Y`（major.minor）**，禁止 `latest`；上游只发 `X.Y.Z` 的镜像（Kafka、各 exporter、RabbitMQ 之外的多数项目）按 `X.Y.Z` pin，并在 `images.yml` 备注原因 | `X.Y` 让补丁自动跟随、跨大版本不漂移；但集群身份文件（`nodes.conf`、`meta.properties`）与版本行为绑定，所以**大版本必须人工升级**。对上游不提供 `X.Y` 标签的镜像，退化为 `X.Y.Z` 反而比 `X.Y` 更可复现 |
 | DEC-41 | **Redis 持久化 = AOF(`everysec`) + RDB 快照并存**（两组 profile 共用 `config/base/redis-base.conf`） | AOF 保证"哨兵切主/节点重启不丢写"，RDB 便于 `backup-all.sh` 在线导出与快速恢复；只开 RDB 会丢最后一次快照之后的写，只开 AOF 则备份/迁移只能靠 `BGREWRITEAOF` 拷贝，体积大且慢 |
-| DEC-42 | **宿主入口 `80/443`**，只有 `nginx-1` 发布；`.env` 的 `ENTRY_HTTP_PORT` 可把宿主侧整体换到高位端口 | 实测非 root 绑定 80 可用（OrbStack 代理），最短 URL 对日常使用收益最大；但 macOS 上 80 可能被其他常驻服务占用，所以把宿主端口做成一个变量，而不是写死在 compose 里 |
+| DEC-42 | **宿主入口 `80/443`**，只有 `nginx` 发布；`.env` 的 `ENTRY_HTTP_PORT` 可把宿主侧整体换到高位端口 | 实测非 root 绑定 80 可用（OrbStack 代理），最短 URL 对日常使用收益最大；但 macOS 上 80 可能被其他常驻服务占用，所以把宿主端口做成一个变量，而不是写死在 compose 里 |
 | DEC-43 | **`TZ=Asia/Shanghai`**，只写 `base/anchors.yml` 一处；MySQL / Mongo 统一 `utf8mb4` | 本地调试看日志/写 SQL 时不用心算时区；集中一处才能在需要时整体切 UTC（跨时区协作只有这一个开关）。组件内出现 `TZ=` 违反铁律一 |
 | **DEC-44** | **Nacos 直接上 3.x**（D35=B）：`nacos-server`×3 + **`nacos-console`×1**（控制台独立、8080、无状态），schema 用 **3.x** 的 `mysql-schema.sql`；端口表/路由/身份清单/probe 全部按 3.x 更新 | 3.x 是官方方向，2.x 已进入维护期；控制台拆成无状态前端后，1 个 console 指向 3 个 server 即可（少 2 个容器、少 2 份状态）。代价是**端口与 schema 与 2.x 不兼容**，且 3.x 资料较新 → 把"console 打包方式 / health 与 metrics 路径 / schema 文件名 / 鉴权默认"列为 P5 首次启动的**锁定四项**（R28） |
 | **DEC-45** | **P0 生成与运行契约**（D04–D07 全部取 A）：凭据用 `env/.env` + `scripts/gen-secrets.sh`（chmod 600，gitignore）；`base/anchors.yml` 由 `render-all.py` 在生成期展开；`services/*/compose.yml` 只作手写骨架，渲染器生成 `.generated/<stack>.yml` 与根聚合 compose；ini 保持竖线 5 列、`mode` 缺省 `ha` | 四项都是 P0 阻塞项，共同理由是"唯一输入 + 生成物可丢弃"：IP/镜像/锚点/凭据各只有一个事实源，根 compose 与 `.generated/` 可随时重建。代价是不能手改生成物，且每次改 ini/base 后必须 `make render`；doctor 第 4/5/13 项兜底 |
-| **DEC-46** | **启用第 15 域 `.20.x` docsify**（`services/docsify/`，`docsify-1`×1，`172.28.20.11:3000`，`role=docs`、`mode=both`）：用 `rockben/docsify-server` 把仓库 `docs/` 变成可浏览站点，经 `docsify.localhost` 从宿主访问；**内容以只读嵌套挂载挂到 `/docs/content`**，站点壳（`index.html` / `assets/` / `_sidebar.md`）渲染到 `.data/site/`；`DOCSIFY_AUTO_INIT=false` 关掉镜像自举；HA 全量豁免（§5.3） | 文档体量（plan.md 1200+ 行）已不适合直读文件；docsify 无需构建、挂载即跑，符合"配置与数据全部位于本仓库"。只读挂载 + 关自举是为了不让容器回写 `docs/`（否则违反"`config/` 只放模板、产物落 `.data/`"）。代价：多 1 容器 / 0.05 GB，占用预留块 `.20`（后续新域从 `.21` 取） |
+| **DEC-46** | **启用第 15 域 `.20.x` docsify**（`services/docsify/`，`docsify`×1，`172.28.20.11:3000`，`role=docs`、`mode=both`）：用 `rockben/docsify-server` 把仓库 `docs/` 变成可浏览站点，经 `docsify.localhost` 从宿主访问；**内容以只读嵌套挂载挂到 `/docs/content`**，站点壳（`index.html` / `assets/` / `_sidebar.md`）渲染到 `.data/site/`；`DOCSIFY_AUTO_INIT=false` 关掉镜像自举；HA 全量豁免（§5.3） | 文档体量（plan.md 1200+ 行）已不适合直读文件；docsify 无需构建、挂载即跑，符合"配置与数据全部位于本仓库"。只读挂载 + 关自举是为了不让容器回写 `docs/`（否则违反"`config/` 只放模板、产物落 `.data/`"）。代价：多 1 容器 / 0.05 GB，占用预留块 `.20`（后续新域从 `.21` 取） |
 | **DEC-47** | **Prometheus 抓取目标按"该栈当前部署形态"过滤**：`hosts_of` / `redis_targets` 不再返 ini 全量，而是用 `services_of <profile> <deployed_mode>`（读 `.data/.mode-*`，无 marker 回退 ha）只列真会起的节点；`job_name: prometheus` 自身按本次 `MODE` 参数取 | 实测反例：consul 跑 solo 时，prometheus 仍把 consul-2/3 列为目标并长期 `down`——`count(up==0)` 不是 0 就分不清"真故障"与"根本没部署这个副本"，`tier-s`（全 solo）会造出十多个假 down。保留 DEC-23 的"新栈自动纳入"：只要该栈被起过就会按当前形态出现；代价是**改形态后要 `make render` + reload** 才同步（已写进 §14 与 stacks.md） |
 | **DEC-48** | **doctor 增加第 15 项「运行态健康」**，并把"Docker daemon 重启后必须重跑 `make stack-up`（或 `make tier-*`）才能恢复集群不变量"写成正式口径（§6.3 / §8.4 / stacks.md 全局约定） | 真实事故链：daemon 重启 → `restart: unless-stopped` 只复活容器 → mysql 因为 `group_replication_start_on_boot=OFF` 停在 OFFLINE → `nacos_config` 库（成组后才建）不存在 → nacos ×3 进 crash loop（restart=50）——而 `make doctor` 当时 **14/14 PASS**。前 14 项全为静态校验，结构性看不见这一层。代价：doctor 从"全停也能绿"变成第 15 项依赖 daemon；已用 WARN（而非 FAIL）包住"未部署/没在跑"，保证没起东西时不会喷 FAIL |
 | **DEC-49** | **redis 的 `/scrape` 中继只列 6379 节点，不列 sentinel（26379）**：`redis_targets()` 跳过 `role=sentinel` | 实测：中继型 exporter 只能带一份全局 `REDIS_PASSWORD`，而 sentinel 自身不设密码（只用 `sentinel auth-pass` 连 master），带密码去连会 AUTH 失败；更坑的是 `up` 仍为 1（中继永远回 200），真正失败的是指标里的 `redis_up 0`——三个 sentinel 存活却长期报 0，与 DEC-47 要消除的假故障同一类（已用一个不带密码的临时 exporter 对照证实：同一 sentinel 目标 `redis_up 1`，加上 `REDIS_PASSWORD` 就变 0）。控制面健康本来就不靠指标：`make stack-status` 比三台 `get-master-addr-by-name` 是否一致，加 `make failover-drill`；主从切换在指标上体现为 `redis_role` 在两个 instance 间互换。代价：拿不到 sentinel 自身的 INFO 指标（想拿要先给 sentinel 设密码，已列为 D37） |
 | **DEC-50** | **`stack.sh` 的 MODE 缺省不再写死 solo，而是读 `.mode-<profile>` marker 沿用当前部署形态**（无 marker = 从没部署过才回退 solo） | 实测：`make stack-status S=mysql`（Makefile 旧默认 `MODE=solo`）在一个 **ha 部署**上走的是 solo 分支，打 `@@server_id / @@gtid_mode / @@version` 而**不是** MGR 成员表——看起来输出了东西、实际验的是另一个形态，跟 DEC-48 要消除的"绿色说谎"同类。marker 是唯一事实源（DEC-47/48 已用），`deployed_mode <profile> [fallback]` 加一个可选回退参数而不是再造一份读取逻辑。附带收益：DEC-48 的恢复口径"重跑 `make stack-up`"不带 MODE 时不会再把 ha 部署静默改成 solo。代价：`make stack-up S=<p>` 省略 MODE 的语义从"起 solo"变成"沿用当前形态"（要显式换形态必须写 `MODE=solo\|ha`），脚本每次会打印 `# MODE 未指定 -> <mode>` 以免误以为还是旧默认 |
 | **DEC-51** | **工具链与依赖不进宿主：`mise.toml`（入库输入）钉 `python = "3.12"`，依赖只装仓库内 `.venv/`（生成物，gitignore），`make setup` 一键重建**；Makefile 前置 `.venv/bin` 到 PATH，`scripts/lib.sh` 同效（覆盖不走 make 的直接调用） | 直接诱因：一次 `make render` / `stack-up` 报 `ModuleNotFoundError: No module named 'yaml'`。根因不是版本旧，而是**宿主同时存在三个 `python3`**（uv 的 3.12 / mise 的 shims / Apple 的 `/usr/bin/python3` 3.9.6），而 `.zshrc` 把 `~/.local/bin` 前置在 `mise activate` **之后**，于是交互式 zsh 与 `bash -lc` / cron / IDE Run Config 解析到不同解释器（实测：`zsh -ic` 得 3.12，`zsh -lc` / `bash -lc` / `env -i` 得 3.9.6）。"升级系统 Python"不是选项：`/usr/bin/python3` 由 Apple 随 Command Line Tools 分发（root:wheel、SIP 保护，下次 CLT 更新会覆盖）。选 mise 而非手建 venv：宿主已用 mise 管 go/golangci-lint/lefthook（既有约定优先），且 mise 的 python 是预编译包（`cpython-3.12.15+…-install_only_stripped.tar.gz`，实测 13.5 s 装好，与 uv 同源）。代价：多一个根级输入文件 `mise.toml` 与一个生成物 `.venv/`；`make setup` 成为首次与换机器的必填项；宿主没装 mise 时需要提示（脚本已回退宿主 `python3`，不会硬坏）；另外要回收本轮临时用 `--break-system-packages` 塞进解释器的 PyYAML |
 | **DEC-52** | **`stack.sh` 的 `up` / `reset` 改为两段式：`up -d`（不等健康）→ `bootstrap` → `up -d --wait`**；同时 mysql 的 `bootstrap.sh` 在首次成组前先解开 `super_read_only` | 真实事故链（一次全量 `down` 后按§8.4 口径恢复）：`mysql-router-1/2` 一直 `unhealthy` → `up -d --wait` 超时失败 → **`bootstrap` 根本没执行** → MGR 停在 `OFFLINE`。根因是顺序死锁：`--wait` 要等 Router 健康，Router 只在 metadata cache 里看到 ONLINE primary 才监听 6446，而成组本来就是 bootstrap 的职责 —— "先等健康再引导"对**任何一个需要 bootstrap 才转健康的栈**都是死循环（DEC-48 写的"重跑 `make stack-up` 即恢复"对 mysql 名实不符）。bootstrap 自己带就绪轮询（各栈 20–60 次），所以第一段不等健康是安全的；第二段才把"真的健康"作为终态。第二道坑：解锁后 `CREATE USER 'repl'` 报 `ERROR 1290`，单主 MGR 重启后节点带 `super_read_only=ON` 回来（运行时值，不落 `mysqld-auto.cnf`），而在成组前必须建 repl 用户；首次成组分支里逐节点 `SET GLOBAL super_read_only=OFF`（只在这个分支！"已成组"分支里 SECONDARY 的只读是单主语义本身，不能解）。实测（`stack.sh rm mysql ha` 后重建容器）11.7 s：MGR 3 `ONLINE`（1P2S）+ 两台 Router `6446/6447 ok`，`nacos_config` 的 10 张表完好 |
+| **DEC-53** | **移除 nginx 的 ha 形态，只保留单实例**：删 `nginx-2`（`.0.12` 释放回空闲），ini 只留 `nginx`（`mode=both`）；`doctor` 第 11 项 nginx 期望改 `entry=1`；`status.sh` 去掉 `nginx-2` 直连分支；plan / stacks / quickstart / README 统一改成"单实例入口、HA 豁免" | 原 DEC-12 用"两台 nginx + 客户端双地址"当 HA，但它既无 VIP、也没有需要同步的状态：两台容器跑同一份 `.data/conf.d`、同一台宿主、同一个 Docker daemon —— 宿主或 daemon 一挂两台一起挂，`MODE=ha` 除了多 0.03 GB 和制造"我做了 HA"的错觉外不产生任何切换能力，与 DEC-30（Jaeger 不伪装双实例 HA）同一类问题。`mode=both` 让它与 docsify 同类（两形态同一节点），`MODE` 不再改变其规模；真入口冗余需多机 + VIP，属 N 级，不在本环境范围 |
+| **DEC-54** | **单实例栈的节点名不带序号**：`nginx-1 → nginx`、`docsify-1 → docsify`；`-1` / `-2` 只留给真的存在第 2 个节点的栈（多节点栈仍用 `<stack>-<node>`，R11）。同时把"谁能发宿主端口"从硬编码名字改成按 ini `role=entry` 判定（`render-all.py` + `doctor` 第 6 项），`status.sh` / `bootstrap.sh` 不再写死节点名 | `-1` 只有在存在第 2 个节点时才有信息量：nginx 删掉 `nginx-2`（DEC-53）后 `-1` 只剩"曾经有两台"的误导，docsify 从启用起就是单实例（DEC-46）。名字与 grafana / jaeger / alertmanager 的既有写法对齐（它们本来就用产品名）。顺手消掉硬编码是因为这次改名实测要动 4 个脚本（`render-all.py` 两处、`doctor.py` 一处、两个 shell），而"仅 entry 可发布宿主端口"这条规则本来就不该认识具体节点名。被否方案：保留 `-1` 图省事（名字继续暗示不存在的兄弟节点），或反过来给 grafana / jaeger / alertmanager 补 `-1`（无收益且要动更多栈与文档）。适用边界：某栈真的出现第 2 个节点时恢复 `<stack>-<node>`，不要造 `nginx` + `nginx-2` 这种混合 |
 
 ### 11.2 历史（已被取代，留档）
 
@@ -990,7 +998,7 @@ redis_exporter: oliver006/redis_exporter:v1.67.0  # X.Y.Z：小版本会改指�
 | # | 风险 | 影响 | 缓解 |
 |---|---|---|---|
 | R1 | "宿主免端口映射"依赖 OrbStack | 换 Colima/Docker Desktop → Sentinel/Cluster/Patroni/Router/Kafka 地址公告失效 | `doctor.sh` 第 7 项卡死 context；README 顶部写前提；换运行时按 §1 重新评估 |
-| R2 | 71 容器 / 14.75 GB（余量 ≈ 0.95 GB） | OOM / 宿主卡顿 | 六档纪律（§9.1）+ §9.2 限流；全量 ha 不常驻；`make size` 监控 |
+| R2 | 70 容器 / 14.72 GB（余量 ≈ 0.98 GB） | OOM / 宿主卡顿 | 六档纪律（§9.1）+ §9.2 限流；全量 ha 不常驻；`make size` 监控 |
 | R3 | 身份状态文件丢失 | 集群不可恢复（需重建 + 数据丢失） | 状态文件全在 `.data/` → `backup-all.sh`；`stack-reset` 前强制备份 |
 | R4 | macOS bind mount 权限 | PG/Redis/MySQL/Mongo 启动失败 | `bootstrap.sh` 对齐 uid（999）；`PGDATA` 用子目录避开 lost+found |
 | R5 | 单机模拟集群 ≠ 真分布式 | 无法复现脑裂/时钟/跨机延迟 | §5.4 明确边界；多机验证另立方案（N02） |
@@ -998,7 +1006,7 @@ redis_exporter: oliver006/redis_exporter:v1.67.0  # X.Y.Z：小版本会改指�
 | R7 | 重启顺序依赖 | bootstrap 逆序导致成员无法加入 | `render.sh` 固定依赖顺序；`stack-up` 内置等待 healthy |
 | R8 | `include` 无 glob | 新增/恢复域漏登记 | `render-all.sh` 生成，不手写 |
 | R10 | MGR/DLedger/Patroni 均依赖"初始种子 + 整栈重建" | 单节点 reset 会导致集群无法恢复 | `reset.sh` 强制整栈；`doctor.sh` 第 11 项校验法定人数 |
-| R11 | 容器命名/日志量 | 71 个容器日志炸盘 | 统一命名 `<stack>-<node>`；日志限 10m×3 |
+| R11 | 容器命名/日志量 | 70 个容器日志炸盘 | 多节点栈统一命名 `<stack>-<node>`；**单实例栈用产品名不带序号**（`nginx` / `docsify` / `grafana` / `jaeger` / `alertmanager`，DEC-54）；日志限 10m×3 |
 | R12 | `restart` 策略干扰演练 | 误判"切换成功" | `doctor.sh` 第 12 项 + §8.3 |
 | R13 | 双形态配置漂移 | solo 行为被误当集群结论 | 两形态共用同一份模板渲染；`docs/stacks.md` 标注语义差异 |
 | R14 | 两形态/两 profile 数据目录误用 | 用 solo 数据启动 ha 节点 → `nodes.conf` / MGR 元数据损坏 | `render.sh` 生成不同 `dir`；`stack-switch` 强制提示；`.data/<group>/` 分层 |
@@ -1024,7 +1032,7 @@ redis_exporter: oliver006/redis_exporter:v1.67.0  # X.Y.Z：小版本会改指�
 
 | 期 | 内容 | 验收 |
 |---|---|---|
-| **P0 地基** | `base/`、`stock/network.ini`（14 域花名册）、`services/nginx`（solo + ha）、`doctor.sh`、`render-all.sh`、`Makefile`、`.gitignore`、`env/` | `make doctor` 15 项全绿；`MODE=solo` 起 1 容器、`MODE=ha` 起 2 容器；容器内 `date` 显示 `CST +0800`；`grafana.localhost` 的 502 能说明路由已通（观测栈未起）；`git status` 不含 `.data/`、`.env` |
+| **P0 地基** | `base/`、`stock/network.ini`（14 域花名册）、`services/nginx`（单实例入口，DEC-53）、`doctor.sh`、`render-all.sh`、`Makefile`、`.gitignore`、`env/` | `make doctor` 15 项全绿；nginx 任一 `MODE` 都只起 1 容器；容器内 `date` 显示 `CST +0800`；`grafana.localhost` 的 502 能说明路由已通（观测栈未起）；`git status` 不含 `.data/`、`.env` |
 | **P1 etcd** | 最轻的共识栈，把 bootstrap 契约打磨成型 | 3 节点 `endpoint health` 全 ok；停 1 节点仍可写；恢复后成员自动回归 |
 | **P2 pg（Patroni）** | patroni×3 + DCS×3 + haproxy×2 + exporter | `patronictl list` 1L2R；`make failover-drill S=pg` → leader 在 30s 内转移，旧主回归为 replica |
 | **P3 redis** | 复合栈两组：哨兵（1M+2R+3S）与集群（3M+3R） | 哨兵：`get-master-addr-by-name` 正确、10s 内切主；集群：`cluster_state:ok`、3M3R、16384 slots；`stack-reset S=redis-sentinel` 不影响 `.data/cluster/` |
@@ -1106,7 +1114,7 @@ nacos.localhost        | 172.28.13.32 | 8080  | subdomain-only
 docsify.localhost      | 172.28.20.11 | 3000  | subdomain-only
 ```
 
-> 只有 `nginx-1` 把 `80` 发布到宿主（`ENTRY_HTTP_PORT` 可覆盖）；`nginx-2` 不发布，供"双地址"验证。
+> 入口只有 `nginx` 一个实例，它把 `80` 发布到宿主（`ENTRY_HTTP_PORT` 可覆盖）；没有第二入口（DEC-53）。
 > 其余 UI 一律经 nginx，不直接发布端口（DEC-3）。
 
 ### 15.4 nginx 生成规则
@@ -1117,18 +1125,37 @@ docsify.localhost      | 172.28.20.11 | 3000  | subdomain-only
 server {
     listen 80;
     server_name <host>;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-Proto $scheme;
+
     proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;      # RabbitMQ Mgmt 必需
+    proxy_set_header Host $http_host;                 # 保留 ENTRY_HTTP_PORT 的端口，上游跳转不丢 port
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Port $server_port;
+    proxy_set_header Upgrade $http_upgrade;           # RabbitMQ Mgmt 必需
     proxy_set_header Connection $connection_upgrade;
-    proxy_buffering off;                          # 长连接/SSE
+
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+    proxy_buffering off;                              # 长连接/SSE
+    client_max_body_size 0;
+
     location / { proxy_pass http://<upstream_ip>:<port>; }
 }
 ```
 
-nginx 两个实例生成**完全相同的配置**（DEC-12：双入口、无 VIP，客户端可任选一个 IP）。
+> 用 `$http_host` 而不是 `$host`：`ENTRY_HTTP_PORT≠80` 时浏览器带端口进来，`$host` 会把端口截掉，
+> 上游（Grafana 等）按 Host 生成的绝对链接就会丢端口。
+
+入口是**单实例**（DEC-53）：同一份配置只跑一份，不存在"两个实例生成相同配置"的伪冗余。
+
+**配置生效链路**（否则改完 `[routes]` 会继续跑旧路由）：`render.sh` 只写宿主上的 `.data/conf.d/`，
+`stack.sh up` 平时不会重建未变化的容器，nginx 又只在启动 / reload 时读该目录 —— 因此由
+`services/nginx/scripts/bootstrap.sh` 在 `up` 之后做 `nginx -t && nginx -s reload`（起容器 → reload → 等健康，
+与 DEC-52 的两段式一致）；`nginx -t` 不过时让 `stack-up` 直接失败，不静默沿用旧配置。只跑 `make render`
+不会生效，需 `make stack-up S=nginx`。
 
 ### 15.5 域名解析边界
 
@@ -1136,7 +1163,7 @@ nginx 两个实例生成**完全相同的配置**（DEC-12：双入口、无 VIP
 |---|---|
 | 宿主浏览器 | `*.localhost` 自动 → `127.0.0.1`（macOS 原生，**不改 `/etc/hosts`**） |
 | 容器之间 | **禁止**用 `.localhost`；一律用容器 IP 或服务名（R15） |
-| 端口 | 仅 `80`（nginx-1）；`443` 保留给后续自签 TLS；宿主侧端口由 `.env` 的 `ENTRY_HTTP_PORT` 决定（默认 80） |
+| 端口 | 仅 `80`（nginx）；`443` 保留给后续自签 TLS；宿主侧端口由 `.env` 的 `ENTRY_HTTP_PORT` 决定（默认 80） |
 
 ---
 

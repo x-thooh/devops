@@ -39,7 +39,7 @@ GENERATED = ROOT / ".generated"
 
 # 每个 profile 的 HA 角色数量（ini 结构，不是运行时状态）
 EXPECTED_HA_ROLES: dict[str, dict[str, int]] = {
-    "nginx": {"entry": 2},
+    "nginx": {"entry": 1},
     "pg": {"leader": 1, "replica": 2, "dcs": 3, "proxy": 2},
     "redis-sentinel": {"master": 1, "replica": 2, "sentinel": 3},
     "redis-cluster": {"master": 3, "replica": 3},
@@ -246,7 +246,9 @@ def check_5_profiles(stacks: dict[str, list[Row]]) -> tuple[str, str]:
     return "PASS", f"{checked} 个 service 均恰好带 1 个 profile"
 
 
-def check_6_ports_publish() -> tuple[str, str]:
+def check_6_ports_publish(stacks: dict[str, list[Row]]) -> tuple[str, str]:
+    # 谁能发宿主端口由 ini 的 role 决定（entry），不写死节点名（DEC-54）
+    entry_names = {row.name for rows in stacks.values() for row in rows if row.role == "entry"}
     problems: list[str] = []
     for directory in enabled_dirs():
         for label, services in (
@@ -256,13 +258,14 @@ def check_6_ports_publish() -> tuple[str, str]:
             for name, service in services.items():
                 if not isinstance(service, dict):
                     continue
-                if "ports" in service and name != "nginx-1":
-                    problems.append(f"{directory.name}/{label}: {name} 声明了宿主 ports")
+                if "ports" in service and name not in entry_names:
+                    problems.append(f"{directory.name}/{label}: {name} 声明了宿主 ports（只有 role=entry 可发布）")
                 if service.get("network_mode") == "host":
                     problems.append(f"{directory.name}/{label}: {name} 使用 host 网络")
     if problems:
         return "FAIL", "; ".join(problems)
-    return "PASS", "只有 nginx-1 发布宿主端口"
+    entries = "、".join(sorted(entry_names)) or "无"
+    return "PASS", f"只有 role=entry（{entries}）发布宿主端口"
 
 
 def check_7_context() -> tuple[str, str]:
@@ -596,7 +599,14 @@ def main() -> int:
     print(f"devops doctor · 已启用 {len(enabled_dirs())} 个目录 / {len(profiles)} 个 profile")
     for index, (title, func, _needs_stacks) in enumerate(CHECKS, 1):
         try:
-            if func in (check_1_ip_range, check_2_ip_unique, check_3_ports, check_4_compose, check_5_profiles):
+            if func in (
+                check_1_ip_range,
+                check_2_ip_unique,
+                check_3_ports,
+                check_4_compose,
+                check_5_profiles,
+                check_6_ports_publish,
+            ):
                 status, detail = func(stacks)
             elif func is check_11_topology or func is check_13_dual_form or func is check_14_routes or func is check_15_runtime:
                 status, detail = func(stacks, profiles)

@@ -7,11 +7,11 @@
 
 | 已实现 | 说明 |
 |---|---|
-| `stock/network.ini` | 15 域 / 17 目录 / 18 部署单元 / 71 行花名册；IP、端口、mode、路由唯一权威 |
+| `stock/network.ini` | 15 域 / 17 目录 / 18 部署单元 / 70 行花名册；IP、端口、mode、路由唯一权威 |
 | `base/` | `network.yml`（唯一 subnet）、`anchors.yml`、`images.yml`、`jvm/heap.env` |
 | 生成器 | `scripts/ini.py` + `scripts/render-all.py` → `.generated/*.yml` + 聚合 compose |
 | `services/*`（17 个） | nginx / pg / redis（复合栈：sentinel + cluster）/ mysql / mongo / kafka / rocketmq / rabbitmq / etcd / consul / nats / nacos / prometheus / alertmanager / grafana / jaeger / docsify |
-| `services/nginx/` | solo（nginx-1）与 ha（nginx-1 + nginx-2），路由由 `[routes]` 生成 |
+| `services/nginx/` | 单实例入口（只有 `nginx`，无 ha，DEC-53），路由由 `[routes]` 生成 |
 | `make doctor` | 15 项体检，按"已启用的栈"取集合（第 15 项按部署形态校运行态） |
 | `Makefile` | render / doctor / up / tier / stack-* / prepull / backup-all / ui-open / failover-drill / trace-demo |
 
@@ -39,11 +39,8 @@ make stack-up S=nginx MODE=solo
 curl -s http://127.0.0.1/healthz                  # ok
 curl -s -o /dev/null -w '%{http_code}\n' \
      -H 'Host: grafana.localhost' http://127.0.0.1/  # 502（grafana 未起，说明路由已通）
-docker exec nginx-1 date                          # CST +0800
-
-make stack-up S=nginx MODE=ha
-curl -s http://172.28.0.12/healthz                # nginx-2 直连 200
-make stack-status S=nginx MODE=ha
+docker exec nginx date                          # CST +0800
+make stack-status S=nginx
 
 make down
 ```
@@ -55,7 +52,8 @@ make up            # = make tier-a
 make tier-s        # solo 全栈（未实现的栈自动 skip）
 ```
 
-> 18 个 profile 各自的 solo / ha 成对命令、容器构成与切换注意事项，见 [`docs/quickstart.md`](docs/quickstart.md)。
+> 18 个 profile 的 solo / ha 命令、容器构成与切换注意事项，见 [`docs/quickstart.md`](docs/quickstart.md)；
+> `nginx` 只有单实例（`MODE` 不改变规模，DEC-53）。
 
 ## 输入 / 输出契约
 
@@ -79,7 +77,7 @@ make tier-s        # solo 全栈（未实现的栈自动 skip）
 - `services/<stack>/compose.yml` 里禁止出现 `image` / `restart` / `logging` / `networks` /
   `network_mode` / `TZ` / `subnet`；镜像写 `x-image: <base/images.yml 的键>`。
 - 每个 service 必须恰好带一个 `profiles`，且与 ini 的 `[stack.*]` 段一致。
-- 只有 `nginx-1` 可以声明宿主 `ports`；其它 UI 一律走 `<svc>.localhost`。
+- 只有 `nginx` 可以声明宿主 `ports`；其它 UI 一律走 `<svc>.localhost`。
 - 改 IP / 端口 / 路由只改 `stock/network.ini`，然后 `make render`；不要手改生成物。
 - `solo ↔ ha` 互斥：`stack.sh up` 会自动 `stop` 不属于当前 mode 的节点（不删数据）。
 
@@ -104,8 +102,7 @@ make tier-s        # solo 全栈（未实现的栈自动 skip）
 ## 验证口径（P0）
 
 - `make doctor`：15 PASS / 0 WARN / 0 FAIL。
-- `MODE=solo`：只有 `nginx-1` 一个容器；`nginx-2` 为 `Exited`。
-- `MODE=ha`：`nginx-1` + `nginx-2` 均 healthy；`172.28.0.12/healthz` 返回 200。
+- nginx 只有 `nginx` 一个容器；`MODE=solo|ha` 规模相同（入口无 ha，DEC-53）。
 - 容器内 `date` 显示 `CST +0800`。
 - `grafana.localhost` 在观测栈未起时返回 502（不是 404 / 000）。
 - `git status` 不出现 `.data/`、`env/.env`、`.generated/`、`.venv/`、根 `compose*.yml`。
@@ -121,7 +118,7 @@ make tier-s        # solo 全栈（未实现的栈自动 skip）
 | doctor 第 8 项失败 | `netstat -rn -f inet \| grep 172.28`；停掉占用该网段的 VPN / 网桥 |
 | `ModuleNotFoundError: yaml` | 跑 `make setup`（依赖在 `.venv` 里）；**不要** `pip install` 进宿主解释器。pypi 直连不通的机器：`make setup PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple` |
 | 同一个仓库在终端能跑、在 cron / IDE Run Config 里报错 | 两个入口解析到的 `python3` 不是一个（PATH 顺序差异）；本仓库靠 Makefile 与 `scripts/lib.sh` 前置 `.venv/bin` 消除（DEC-51） |
-| 改了 nginx 配置不生效 | `make stack-reset S=nginx MODE=solo`（`stack-up` 不会重建未变化的容器） |
+| 改了 nginx 配置 / 路由不生效 | 配置要 reload 才载入：`make stack-up S=nginx`（`bootstrap.sh` 做 `nginx -t` + `nginx -s reload`）；只跑 `make render` 只写宿主文件，运行中的 nginx 看不到 |
 | 502 / 000 分不清 | 502 = nginx 已收到请求但 upstream 未起；000 = 入口本身不可达 |
 | Docker 重启后容器都 `Up`、但 nacos 一直 `Restarting` | `restart` 只复活容器，MGR 不会自动成组（`start_on_boot=OFF` 是设计）；按依赖重跑 `make stack-up S=mysql` → `S=nacos`（省略 MODE 即沿用 ha，plan §8.4） |
 | `make stack-up S=mysql` 报 `container mysql-router-1 is unhealthy` | Router 只在 MGR 有 ONLINE primary 时才监听 6446；成组本来就是 bootstrap 的职责。已改为两段式启动（起容器 → bootstrap → 等健康，DEC-52）；旧写法下 bootstrap 永远轮不到 |
@@ -132,7 +129,7 @@ make tier-s        # solo 全栈（未实现的栈自动 skip）
 ```text
 base/          共享不变量（network / anchors / images / jvm）
 stock/         network.ini（唯一权威）
-services/      各栈骨架、模板、脚本；.data/ 为运行时产物
+services/      各栈骨架、模板、脚本；.data/ 为运行时产物（组件级说明见 services/nginx/README.md）
 scripts/       ini 解析、渲染、doctor、stack/tier 操作
 .env（本地）   入口端口、镜像覆盖、凭据；由 scripts/gen-secrets.sh 生成
 docs/          plan.md（设计源）、quickstart.md（逐栈起停速查）、stacks.md（每期沉淀）、pending-decisions.md

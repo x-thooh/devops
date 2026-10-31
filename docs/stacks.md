@@ -7,50 +7,52 @@
 
 ### 形态
 
+**单实例**（无 ha，DEC-53）。`mode=both` 只表示 solo / ha 共用同一个节点身份，两形态起的容器完全相同：
+
 | mode | 容器 | 宿主端口 | 说明 |
 |---|---|---|---|
-| `solo` | `nginx-1`（`172.28.0.11`） | `ENTRY_HTTP_PORT`（默认 80） | 唯一入口 |
-| `ha` | `nginx-1` + `nginx-2`（`172.28.0.12`） | 仅 `nginx-1` 发布 | 双入口，无 VIP；`nginx-2` 只供直连验证 |
+| `solo` / `ha` | `nginx`（`172.28.0.11`） | `ENTRY_HTTP_PORT`（默认 80） | 唯一入口；`MODE` 不改变规模 |
 
-两实例共用 `services/nginx/config/nginx.conf` 与 `services/nginx/.data/conf.d/`；
+> 节点名就是产品名（不带 `-1`）：没有第 2 个节点时序号只会暗示不存在的兄弟节点（DEC-54）。
+> 同理 `docker exec nginx nginx -t`，不需要猜后缀。
+
 `[routes]` 的每个 host 生成一个 server 块，upstream 指向 ini 中的固定 IP。
 
 ### 输入
 
 | 文件 | 作用 |
 |---|---|
-| `stock/network.ini` 的 `[stack.nginx]` | 两个节点的 IP / 端口 / mode |
+| `stock/network.ini` 的 `[stack.nginx]` | 入口节点 IP / 端口（单实例，没有第二个节点） |
 | `stock/network.ini` 的 `[routes]` | `host \| upstream_ip \| port \| capability` |
 | `services/nginx/compose.yml` | 手写骨架（`x-image: nginx` + profile + 挂载 + 健康检查） |
 | `services/nginx/config/nginx.conf` | 默认站点 `/healthz`、WebSocket map、`include conf.d/*.conf` |
 | `services/nginx/scripts/render.sh` | 生成 `.data/conf.d/<host>.conf` |
+| `services/nginx/scripts/bootstrap.sh` | `nginx -t` + `nginx -s reload`：把新渲染的路由载入运行中的节点 |
 
 ### 起停
 
 ```bash
 make stack-up   S=nginx MODE=solo
-make stack-up   S=nginx MODE=ha
 make stack-status S=nginx              # 省略 MODE = 沿用当前部署形态（DEC-50）
-make stack-down S=nginx MODE=ha     # 只删本 profile 的容器，不影响其它栈
+make stack-down S=nginx                # 只删本 profile 的容器，不影响其它栈
 ```
 
-`stack.sh up` 会先 `make render`，再按 ini 过滤出当前 mode 的 service，
-最后 `stop` 掉不属于该 mode 的节点（`solo` 时 `nginx-2` 变 `Exited`，数据不删）。
+`stack.sh up` 会先 `make render`，再按 ini 筛出该 profile 的 service（只有 `nginx`）。
+
+三个脚本各管一段，别混用：`render.sh` 只**写宿主上的配置**，`bootstrap.sh` 才让它**生效**
+（`stack.sh up` 只在 mode 变化时重建容器，平时 `up` 不会重启节点，而 nginx 只在启动 / reload 时读 `conf.d`），
+`status.sh` 只做只读探测。
 
 ### 验证
 
 ```bash
-# solo / ha 都应有
 curl -s http://127.0.0.1/healthz                  # ok
-docker exec nginx-1 date                          # CST +0800
-docker exec nginx-1 nginx -t
+docker exec nginx date                          # CST +0800
+docker exec nginx nginx -t
 
 # 路由已通（观测栈未起时 502 是预期，不是 404/000）
 curl -s -o /dev/null -w '%{http_code}\n' \
      -H 'Host: grafana.localhost' http://127.0.0.1/
-
-# 仅 ha
-curl -s http://172.28.0.12/healthz                # ok
 ```
 
 `make doctor` 的 15 项应全绿；第 4/6/13 项会校验 nginx 的渲染 IP、profile 与宿主端口，
@@ -58,9 +60,9 @@ curl -s http://172.28.0.12/healthz                # ok
 
 ### solo ↔ ha 语义差异
 
-- `solo` 只复用 `nginx-1`（`.11`）；`nginx-2` 不启动，`172.28.0.12` 不可达。
-- `ha` 才启动 `nginx-2`；两者无 VIP，宿主入口只指向 `nginx-1`，`nginx-2` 用直连 IP 验证。
-- 两者共用同一份 `.data/conf.d/`（无状态，不存在数据隔离问题）。
+- **没有差异**：两形态都只起 `nginx`（`mode=both`），`MODE` 只改 marker，不改规模。
+- 不提供第二入口（DEC-53）：双实例既无 VIP、又同宿主同 daemon，切换无从谈起，
+  重复的只是同一份 `conf.d`。真入口冗余需要多机 + VIP，属 N 级，不在本环境范围。
 
 ### 重置
 
@@ -69,22 +71,22 @@ make stack-reset S=nginx MODE=solo
 ```
 
 顺序：删容器 → 清 `services/nginx/.data/conf.d/*.conf` → `render.sh` 重建路由 →
-重新 `up`。`config/nginx.conf` 是入库模板，不会被删。
+重新 `up`（`bootstrap.sh` reload 后生效）。`config/nginx.conf` 是入库模板，不会被删。
 
 ### 坑
 
 | 现象 | 原因 / 处理 |
 |---|---|
 | `port is already allocated` | 宿主 80 被占；`lsof -nP -iTCP:80 -sTCP:LISTEN`，或改 `env/.env` 的 `ENTRY_HTTP_PORT` |
-| 改 `nginx.conf` 不生效 | `stack-up` 不会重建未变化的容器；用 `make stack-reset` 或 `docker compose restart nginx-1` |
+| 改 `nginx.conf` / `[routes]` 不生效 | 配置要 reload 才载入。`make stack-up S=nginx`（bootstrap 会 `nginx -t && nginx -s reload`）即可；只跑 `make render` 只写宿主文件，运行中的 nginx 看不到。仍不行再 `make stack-reset S=nginx` |
 | 浏览器打不开 `grafana.localhost` | 只有宿主能解析 `*.localhost`；容器之间必须用 IP / 服务名（R15） |
 | `grafana.localhost` 返回 502 | 正常：路由已通，grafana 未起；等观测栈起来后再验 200 |
-| `nginx-2` 直连 000 | `MODE=solo` 或容器未起；切 `MODE=ha` 后再试 |
+| 想让入口冗余 / 双活 | 本环境做不到：单机 + 单 daemon，双实例同故障域（DEC-53）。真冗余需多机 + VIP（N 级） |
 | `make doctor` 第 8 项失败 | VPN / 其它网桥占用了 `172.28.0.0/16`；`netstat -rn -f inet \| grep 172.28` |
-| `[routes]` 改了但配置没变 | 只改 ini 不够，必须 `make render`（或 `make stack-up`，它内部会 render） |
-| 新增路由后 `*.localhost` 返回默认站点文本（如 `devops edge (nginx) is up`） | render 只生成 `.data/conf.d/<host>.conf`，**nginx 不会自动重读**：`docker exec nginx-1 nginx -t && docker exec nginx-1 nginx -s reload`，或 `make stack-reset S=nginx MODE=solo` |
+| `[routes]` 改了但配置没变 | 路由是渲染产物：只改 ini 不够，必须 `make stack-up S=nginx`（= render + reload）。别直接改 `.data/conf.d/*.conf`，下次 render 会覆盖（DEC-11/DEC-22） |
+| 新增路由后 `*.localhost` 返回默认站点文本（如 `devops edge (nginx) is up`） | 说明新配置没被载入（`bootstrap.sh` 没跑或 reload 失败）：`docker exec nginx nginx -t && docker exec nginx nginx -s reload`，或 `make stack-up S=nginx` |
 | curl 返回 200 但浏览器打不开 | 服务端没问题，查宿主侧：地址栏被补成 `https://`（443 未启用，见 DEC-42）、Chrome "安全 DNS（DoH）"把 `*.localhost` 丢给远端解析、代理类插件劫持（系统代理的 bypass 列有 `localhost` 但**不含 `*.localhost`**）；零配置退路：直接开容器 IP `http://172.28.20.11:3000` |
-| 想看 nginx 收到过哪些请求 | `docker logs nginx-1`。**不要** `docker exec nginx-1 tail /var/log/nginx/access.log` —— 该文件是指向 `/dev/stdout` 的软链，`tail` 会永久阻塞 |
+| 想看 nginx 收到过哪些请求 | `docker logs nginx`。**不要** `docker exec nginx tail /var/log/nginx/access.log` —— 该文件是指向 `/dev/stdout` 的软链，`tail` 会永久阻塞 |
 
 ---
 
@@ -637,7 +639,7 @@ nacos 的库表在 mysql，**没有 `nacos_config` 它就起不来**：`solo` �
 
 | mode | 容器 | 说明 |
 |---|---|---|
-| `solo` / `ha` | `docsify-1`（`172.28.20.11:3000`） | `mode=both`：两形态完全相同（无状态纯浏览，HA 全量豁免，DEC-46） |
+| `solo` / `ha` | `docsify`（`172.28.20.11:3000`） | `mode=both`：两形态完全相同（无状态纯浏览，HA 全量豁免，DEC-46）；节点名不带序号（DEC-54） |
 
 挂载形状（嵌套）：
 
@@ -670,7 +672,7 @@ curl -s http://172.28.20.11:3000/_sidebar.md   # 侧栏由容器按 /docs/conten
 
 ### solo ↔ ha 语义差异
 
-无。`docsify-1` 是 `both` 节点，两形态同一个容器、同一份数据；`make failover-drill` 不适用（没有可切换的副本）。
+无。`docsify` 是 `both` 节点，两形态同一个容器、同一份数据；`make failover-drill` 不适用（没有可切换的副本）。
 
 ### 重置
 
@@ -685,10 +687,10 @@ make stack-reset S=docsify MODE=solo
 | 现象 | 原因 / 处理 |
 |---|---|
 | `bootstrap.sh` 报 `content=empty` | 内容源没挂上：看 `.generated/docsify.yml` 里 `/docs/content` 的宿主路径是否存在 |
-| `bootstrap.sh` 报 `sidebar=empty` | `config/entry.sh` 未生成侧栏：确认 `/opt/docsify` 挂上且容器内有 `node`；看 `docker logs docsify-1` |
+| `bootstrap.sh` 报 `sidebar=empty` | `config/entry.sh` 未生成侧栏：确认 `/opt/docsify` 挂上且容器内有 `node`；看 `docker logs docsify` |
 | 容器启动即退出，日志报 `Docsify can't find index.html!` | `DOCSIFY_AUTO_INIT=false`（严格模式）且 `.data/site/index.html` 不在；跑一次 `make render` 即补回 |
 | 新加/删除的 `.md` 暂时不在侧栏 | 侧栏由 watch 周期重扫（默认 15s）；稍等即刷新，要立即生效则 `make stack-reset S=docsify` 重启（不再靠 `make render`） |
-| `docsify.localhost` 返回默认 `devops edge (nginx) is up` | nginx 还没 reload（新 `conf.d/*.conf` 要重读）：`docker exec nginx-1 nginx -s reload` 或 `make stack-reset S=nginx MODE=solo` |
+| `docsify.localhost` 返回默认 `devops edge (nginx) is up` | nginx 还没 reload（新 `conf.d/*.conf` 要重读）：`docker exec nginx nginx -s reload` 或 `make stack-reset S=nginx MODE=solo` |
 | 页面能开但样式/脚本缺失（白底无侧栏） | `.data/site/assets/` 丢了或与镜像版本不同步；`make render` 重拷，必要时按上表从镜像重新导出 |
 | 子目录文档（`docs/archive/*`）里的相对链接点不开 | 链接按仓库目录书写（相对于文档自身），子目录内互指正常；跨回顶层请写 `../plan.md` |
-| 想直接返宿主端口 8080（原草稿写法） | 违反 F06（只有 `nginx-1` 发布宿主端口）；走 `docsify.localhost` |
+| 想直接返宿主端口 8080（原草稿写法） | 违反 F06（只有 `nginx` 发布宿主端口）；走 `docsify.localhost` |

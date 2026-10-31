@@ -35,12 +35,12 @@
 | F07 | `stock/network.ini` 单一事实源，compose 由脚本生成 | plan DEC-4 |
 | F08 | 每栈双形态 solo / ha，profile 切换 | plan DEC-18 |
 | F09 | 演练一律 `docker compose stop` | plan DEC-17 |
-| F10 | 不用 keepalived/VIP，nginx 双实例 + 客户端双地址 | plan DEC-12 |
+| F10 | 不用 keepalived/VIP；~~nginx 双实例 + 客户端双地址~~ → **入口单实例**（v4.6 删 `nginx-2`） | plan DEC-12（已被 DEC-53 取代） |
 | F11 | RocketMQ 用 DLedger 3 broker；MySQL 用 MGR + Router（MinIO 已于 v4.2 删除，见 F22） | plan DEC-8/14 |
 | F12 | observability 域（`.12.x`）内按组件拆 4 栈：prometheus / alertmanager / grafana / jaeger | plan DEC-20/24/29 |
 | F13 | UI 统一经 `<svc>.localhost` 子域，路由表进 ini `[routes]` | plan DEC-21/22 |
 | F14 | 可观测性四栈各自带 compose/config/scripts/.data | plan §16.1 |
-| F15 | 三层模型：域（15）/ 目录（17）/ 部署单元（18）/ 容器（28→71） | plan §2.1 |
+| F15 | 三层模型：域（15）/ 目录（17）/ 部署单元（18）/ 容器（28→70） | plan §2.1 |
 | F16 | 块号与 `[stack.*]` 命名不随范围调整删除 | plan DEC-28 |
 | F17 | `services/jaeger/`（`.12.32`）：OTLP + Badger + UI；不伪装双实例 HA | plan DEC-29/30 / §16.5 |
 | F18 | `redis` 复合栈（一目录两组互斥 profile；数据分 `.data/sentinel/`、`.data/cluster/`） | plan DEC-31/32 / §8.0.1 |
@@ -51,7 +51,7 @@
 | **F23** | **镜像默认官方源 + 可自定义**：`base/images.yml` 唯一清单，`.env` 的 `IMG_<NAME>` / `IMAGE_PREFIX` 可覆盖；compose 禁止字面量镜像 | plan DEC-39 / §10 |
 | **F24** | **版本形态 `X.Y`**（禁止 `latest`）；上游只发 `X.Y.Z` 的按 `X.Y.Z` pin 并注明 | plan DEC-40 |
 | **F25** | **Redis 持久化 = AOF everysec + RDB 快照** | plan DEC-41 / D31 |
-| **F26** | **宿主入口 `80/443`**，仅 nginx-1 发布，`ENTRY_HTTP_PORT` 可覆盖 | plan DEC-42 / D03 |
+| **F26** | **宿主入口 `80/443`**，仅 nginx 发布，`ENTRY_HTTP_PORT` 可覆盖 | plan DEC-42 / D03 |
 | **F27** | **`TZ=Asia/Shanghai`**（只在 `base/anchors.yml` 出现），MySQL/Mongo `utf8mb4` | plan DEC-43 / D08 |
 | **F28** | **RabbitMQ 端口含 Erlang 分发段 `35672-35682`**（与 v2.3 一致；doctor 第 3 项按区间校验） | plan §5.1 / §6.2 / Q10 |
 | **F29** | **Nacos 升 3.x**：`nacos-server`×3 + `nacos-console`×1（8080，无状态），3.x schema；P5 锁定四项待确认 | plan DEC-44 / D35 / R28 |
@@ -62,6 +62,8 @@
 | **F34** | **`stack.sh` 的 MODE 缺省不再写死 solo**：读 `.mode-<profile>` marker 沿用当前部署形态，从没部署过才回退 solo（并打印解析结果）；避免 ha 部署被当 solo 查（MGR 成员表 vs `@@server_id`） | plan DEC-50 / stacks.md 全局约定 |
 | **F35** | **工具链固定走 mise**：`mise.toml`（入库）钉 `python = "3.12"`，依赖只进仓库内 `.venv/`（生成物），`make setup` 一键重建；Makefile 与 `scripts/lib.sh` 前置 `.venv/bin` | plan DEC-51 / stacks.md 全局约定 |
 | **F36** | **`stack-up` / `stack-reset` 改两段式（起容器 → bootstrap → 等健康），mysql 首次成组前先解 `super_read_only`**：单段 `up -d --wait` 对需要 bootstrap 才转健康的栈是顺序死循环，这让 DEC-48 的"重跑 `make stack-up` 即恢复"对 mysql 名实不符 | plan DEC-52 / §8.4 / stacks.md 全局约定 |
+| **F37** | **移除 nginx 的 ha 形态**：删 `nginx-2`（`.0.12` 回空闲），ini 只留 `nginx`（`mode=both`）；doctor 第 11 项 nginx 期望 `entry=1`；`status.sh` 去掉第二入口探测 | plan DEC-53 / §5.2 / §15.3 |
+| **F38** | **单实例栈的节点名不带序号**：`nginx-1 → nginx`、`docsify-1 → docsify`；多节点栈仍用 `<stack>-<node>`。同时把"仅 `role=entry` 可发宿主端口"从硬编码节点名改为按 ini 角色判定（`render-all.py` + doctor 第 6 项），`nginx` 的 `status.sh` / `bootstrap.sh` 不再写死节点名 | plan DEC-54 / R11 / §5 花名册 |
 
 ---
 
@@ -101,9 +103,9 @@
 
 **结论**：**`80/443`**（实测非 root 绑定 80 可用，OrbStack 代理），保留 B 作为 `.env` 覆盖项（plan DEC-42）。
 
-- 只有 `nginx-1` 声明 `ports:`，默认映射 `80:80`；`ENTRY_HTTP_PORT=8080` 可整体改到高位端口，**不需要改任何 compose**。
+- 只有 `nginx` 声明 `ports:`，默认映射 `80:80`；`ENTRY_HTTP_PORT=8080` 可整体改到高位端口，**不需要改任何 compose**。
 - `443` 暂不启用（自签 TLS 列 N03），但端口位与 `listen 443 ssl` 占位保留在 `config/nginx.conf` 的注释里。
-- `nginx-2` 不发布宿主端口，仍可在容器网络内以 `172.28.0.12:80` 访问（"双地址"验证用）。
+- 入口只有一个实例（`nginx`），没有第二个入口可直连（v4.6 删 `nginx-2`，DEC-53）。
 
 **影响**：仅 `[stack.nginx]`
 **阻塞**：无（P0 按此落地）
@@ -150,7 +152,7 @@
 
 ### D07 `stock/network.ini` 格式确认 ✅ 已定案（A）
 
-**结论**：**A**。竖线分隔 5 列 `name | ip | ports | role | mode`；`mode` 缺省 = `ha`；`scripts/ini.py` 零依赖解析并校验 71 行 / 18 profile。
+**结论**：**A**。竖线分隔 5 列 `name | ip | ports | role | mode`；`mode` 缺省 = `ha`；`scripts/ini.py` 零依赖解析并校验 70 行 / 18 profile。
 
 现方案：竖线分隔 5 列 `name | ip | ports | role | mode`，`awk -F'|'` 解析，`mode` 缺省 = `ha`。
 
@@ -498,7 +500,7 @@ v4.2 删除 minio（DEC-38，无消费者）。若将来需要对象存储（应
 | N02 | 真实多机分布式 | R5 边界已写明；需另立方案（多 VM / SSH driver） |
 | N03 | TLS / 自签证书体系 | 本地测试收益低；nginx 443 仅用自签占位 |
 | N04 | Terraform / Ansible | 纯 compose + 脚本足够；引入会与"数据在仓库内"冲突 |
-| N05 | keepalived / VIP | DEC-12 已定 |
+| N05 | keepalived / VIP | DEC-12 已定"不做 VIP"；DEC-53 进一步删掉 nginx 第二实例（双实例也是假 HA） |
 | N06 | Redis 可视化 UI（RedisInsight 等） | 用 `redis-cli` + Grafana 即可；需要时按 §17 追加一栈 |
 | N07 | Redis Stack / 模块（JSON、Search、TS） | 与缓存语义验证无关，且会替换标准 `redis` 镜像 |
 | N08 | 真实告警外发（Slack/邮件） | mailpit 已于 v4.2 删除；告警在 `alertmanager.localhost` 与 Grafana 查看，`receivers` 为 `nul` |
@@ -517,7 +519,7 @@ P0 的 8 项决策全部落定，可以直接进入 `plan §13` 的 P0 实施：
 |---|---|---|
 | D01 | 官方镜像 + 可自定义（`images.yml` + `.env` 覆盖） | DEC-39 |
 | D02 | 版本粒度 `X.Y`，禁止 `latest` | DEC-40 |
-| D03 | 入口 `80/443`，仅 nginx-1 发布，`ENTRY_HTTP_PORT` 可覆盖 | DEC-42 |
+| D03 | 入口 `80/443`，仅 nginx 发布，`ENTRY_HTTP_PORT` 可覆盖 | DEC-42 |
 | D04 | 单一 `env/.env` + `gen-secrets.sh`，`make secrets-show` 可打印（按推荐） | — |
 | D05 | `base/anchors.yml` 生成期展开（按推荐） | — |
 | D06 | compose 全生成，不手写 include（按推荐） | — |

@@ -6,7 +6,7 @@ set -euo pipefail
 STACK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${STACK_DIR}/../../scripts/lib.sh"
 
-ip="$(ip_of docsify-1)"
+ip="$(ip_of docsify)"
 
 for _ in $(seq 1 30); do
     curl -sf -o /dev/null "http://${ip}:3000/" && break
@@ -16,7 +16,7 @@ done
 root="$(curl -s -o /dev/null -w '%{http_code}' "http://${ip}:3000/")"
 assets="$(curl -s -o /dev/null -w '%{http_code}' "http://${ip}:3000/assets/docsify.min.js")"
 # 内容就绪 = /docs/content 目录存在且非空；不绑具体文件名（宿主挂空目录会被 bind mount 自动建成空 dir，据此判定"没挂上"）
-if docker exec docsify-1 sh -c '[ -n "$(ls -A /docs/content 2>/dev/null)" ]' >/dev/null 2>&1; then
+if docker exec docsify sh -c '[ -n "$(ls -A /docs/content 2>/dev/null)" ]' >/dev/null 2>&1; then
     content="mounted"
 else
     content="empty"

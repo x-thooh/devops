@@ -251,10 +251,12 @@ def render_stack(
         if "build" in service:
             service["build"] = rewrite_build(service["build"], compose_path.parent)
 
-        if name == "nginx-1" and "ports" not in service:
-            raise RenderError("nginx-1 must publish the host port")
-        if name != "nginx-1" and "ports" in service:
-            raise RenderError(f"{name}: only nginx-1 may declare host ports")
+        # 宿主端口只给 role=entry（当前是 nginx）：按 ini 角色判定，不写死节点名 —— 单实例栈
+        # 改名（nginx-1 → nginx）或换入口产品时这条规则不用跟着改（DEC-54）。
+        if row.role == "entry" and "ports" not in service:
+            raise RenderError(f"{name}: role=entry 必须发布宿主端口")
+        if row.role != "entry" and "ports" in service:
+            raise RenderError(f"{name}: 只有 role=entry 的节点可声明宿主端口")
 
         service["networks"] = {"devnet": {"ipv4_address": row.ip}}
         rendered[name] = service

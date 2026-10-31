@@ -30,7 +30,7 @@ help:
 	@echo "make stack-up S=nginx [MODE=]   单栈（先 render，再按 mode 起 service；省略 MODE 则沿用当前形态）"
 	@echo "make stack-status S=nginx       省略 MODE 则按 marker 查当前部署形态（ha 部署不会再看成 solo）"
 	@echo "make stack-reset S=nginx"
-	@echo "make stack-shell S=nginx N=nginx-1"
+	@echo "make stack-shell S=nginx N=nginx"
 	@echo "make failover-drill S=pg [N=controller|broker（kafka）]"
 	@echo "make trace-demo                 推一条 OTLP trace 给 jaeger"
 	@echo "make ui-open S=grafana"

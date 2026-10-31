@@ -5,10 +5,10 @@
 # 不把仓库根挂进容器：避开 env/.env 与 backups/ 被静态服务读到。
 # DOCSIFY_AUTO_INIT=false：关掉镜像自举，/docs 缺 index.html 直接退出，不写任何文件。
 services:
-  docsify-1:
+  docsify:
     x-image: docsify
     profiles: ["docsify"]
-    container_name: docsify-1
+    container_name: docsify
     entrypoint: ["/bin/sh", "/opt/docsify/entry.sh"]
     environment:
       DOCSIFY_AUTO_INIT: "false"

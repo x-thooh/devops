@@ -30,11 +30,10 @@ make up TIER=a                    # A 档默认形态（档位定义见 Makefile
 
 | profile | solo 起 | ha 起 |
 |---|---|---|
-| `nginx` | nginx-1 | nginx-1 nginx-2 |
+| `nginx` | nginx | 同左：只有单实例（`MODE` 不改规模，DEC-53） |
 
 ```bash
 make stack-up S=nginx MODE=solo
-make stack-up S=nginx MODE=ha
 ```
 
 ### 数据库
@@ -107,7 +106,7 @@ make stack-up S=nacos   MODE=ha
 | `alertmanager` | alertmanager | alertmanager（同规模） |
 | `grafana` | grafana | grafana（同规模） |
 | `jaeger` | jaeger | jaeger（同规模） |
-| `docsify` | docsify-1 | docsify-1（同规模） |
+| `docsify` | docsify | docsify（同规模） |
 
 ```bash
 make stack-up S=prometheus   MODE=solo
@@ -129,7 +128,8 @@ make stack-up S=docsify      MODE=solo
    make stack-reset S=<profile> MODE=ha    # 停容器 → 删本 profile 的 .data 子树 → 重渲染 → 起
    ```
 
-   无状态栈（nginx / grafana / jaeger / docsify / prometheus / alertmanager）可直接就地 `stack-up ... MODE=ha`。
+   无状态栈（nginx / grafana / jaeger / docsify / prometheus / alertmanager）可直接就地 `stack-up ... MODE=ha`；
+   nginx 本来就只有单实例，`MODE` 不改规模（DEC-53）。
 5. **依赖顺序**：`nacos` 需 `mysql` 先起（ha 经 Router `172.28.4.31:6446`，solo 直连 `mysql-1:3306`）；`pg` 的 ha 自带 pg-dcs(etcd)，无需外部 etcd。
 
 ## 验证与状态

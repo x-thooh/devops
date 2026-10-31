@@ -10,7 +10,7 @@
 | 项 | 状态 |
 |---|---|
 | 已有内容 | `docs/`（方案与决策文档）；`base/`、`stock/network.ini`、`scripts/`（ini 解析 / render-all / doctor / stack / tier）、`Makefile`、`env/.env.example`、`README.md`；**17 个组件目录**（nginx / pg / redis / mysql / mongo / kafka / rocketmq / rabbitmq / etcd / consul / nats / nacos / prometheus / alertmanager / grafana / jaeger / docsify），`docs/stacks.md` 每栈一章 |
-| 当前版本 | **plan v4.5**：15 域 / 17 目录 / 18 部署单元 / 28 → 71 容器（Nacos 3.x：server×3 + console；v4.4 加 docsify） |
+| 当前版本 | **plan v4.6**：15 域 / 17 目录 / 18 部署单元 / 28 → 70 容器（Nacos 3.x：server×3 + console；v4.4 加 docsify；v4.6 删 nginx 的假 ha，并把单实例栈的节点名去掉序号：`nginx` / `docsify`，DEC-54） |
 
 ### 0.1 文档层级（只读与可写要分清）
 
@@ -19,6 +19,7 @@
 | `docs/plan.md` | 唯一设计源（架构、IP、契约、ADR、风险） | ✅ 可改，但要同步 §11 ADR 与受影响表格 |
 | `docs/pending-decisions.md` | 未定案决策（D/F/N 编号） | ✅ 可改；定案后把结论写回 plan ADR |
 | `docs/archive/*` | 历史版本（v2.3 13 域、v3.2 缩容版） | ❌ **只读**，不要"顺手修正" |
+| `services/<stack>/README.md`（目前仅 `nginx`） | 组件级说明：定位 / 文件职责 / 命令 / 坑 | ✅ 可改；只写"怎么用、文件在哪"，IP/端口/路由**不复述**（指向 `stock/network.ini` 与 plan §15） |
 
 ---
 
@@ -51,7 +52,7 @@
 | 域 | `/24` IP 块 | 15 | `stock/network.ini` |
 | 组件目录 | `services/<name>/` | 17 | `compose.yml` + `config/` + `scripts/` |
 | 部署单元（profile） | `compose.yml` 的 `profiles` | 18 | 同上 |
-| 容器 | service | 28 / 71 | 同上 |
+| 容器 | service | 28 / 70 | 同上 |
 
 - `services/redis/` 是**唯一复合栈**（一个目录两组互斥 profile）。它成立的四条硬条件见 plan §8.0.1，**不要再造第二个**，除非四条都满足。
 - 新增组件的固定步骤：plan §17（ini 取预留块 → 建目录 → `render-all` → 可选加路由 → `doctor` 自动纳入）。
@@ -66,7 +67,7 @@
 2. **端口按"同一 IP 内不重复"校验**：不按宿主端口，因为除 nginx 外不发布。
 3. **一个 service 必须带 profile**：否则任何 `up` 都会起它，破坏 redis 复合栈互斥（doctor 第 5 项判失败）。
 4. **`config/` 只放模板**：运行时重写或含渲染 IP 的文件必须落 `.data/`（DEC-11）。
-5. **宿主端口只有 `[stack.nginx]` 的 `nginx-1`**；其它 UI 一律经 `<svc>.localhost`（DEC-3 / DEC-42）。
+5. **宿主端口只有 `[stack.nginx]` 的 `nginx`**；其它 UI 一律经 `<svc>.localhost`（DEC-3 / DEC-42）。
 6. **不改 `docs/archive/`**；不在容器内用 `.localhost`（R15）。
 7. **演练只用 `docker compose stop`**，禁止 `docker kill`（DEC-17 / R12）。
 8. **容器 `Up` ≠ 集群成立**：Docker daemon 重启只复活容器，不恢复集群不变量（如 mysql 的
@@ -148,6 +149,7 @@ make trace-demo             # 推一条 OTLP trace 给 jaeger
 
 | 想查 | 看 |
 |---|---|
+| 某个组件目录里有什么、怎么用 | `services/<stack>/README.md`（如 `services/nginx/README.md`） |
 | 某个栈的 IP / 端口 / mode | plan §5.1 `stock/network.ini` |
 | 某组件为什么要 HA、怎么选型 | plan §5.2 / §5.3（豁免） |
 | 身份文件与"搞错会怎样" | plan §7 |
