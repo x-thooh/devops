@@ -15,7 +15,7 @@
 
 | mode | 容器 | 宿主端口 | 说明 |
 |---|---|---|---|
-| `solo` / `ha` | `nginx` | `ENTRY_HTTP_PORT`（默认 80） | 唯一入口；`MODE` 不改变规模 |
+| `solo` / `ha` | `nginx` | `HTTP_PORT`（默认 80） | 唯一入口；`MODE` 不改变规模 |
 
 双实例既无 VIP、又同宿主同 daemon，切不过去，重复的只是同一份配置 —— 属假 HA，v4.6 已删除（DEC-53）。
 
@@ -68,7 +68,7 @@ make stack-reset  S=nginx              # 清路由配置 → 重渲染 → 重�
 ## 验证
 
 ```bash
-curl -s http://127.0.0.1/healthz                 # ok（ENTRY_HTTP_PORT≠80 时换成实际端口）
+curl -s http://127.0.0.1/healthz                 # ok（HTTP_PORT≠80 时换成实际端口）
 docker exec nginx nginx -t                     # syntax is ok
 docker exec nginx date                         # CST +0800
 
@@ -87,7 +87,7 @@ curl -s -o /dev/null -w '%{http_code}\n' \
 | 现象 | 原因 / 处理 |
 |---|---|
 | 改完 `[routes]` 仍返回默认站点文案 | 没 reload；用 `make stack-up S=nginx`，别只 `make render` |
-| `port is already allocated` | 宿主 80 被占；`lsof -nP -iTCP:80 -sTCP:LISTEN`，或改 `env/.env` 的 `ENTRY_HTTP_PORT` |
+| `port is already allocated` | 宿主 80 被占；`lsof -nP -iTCP:80 -sTCP:LISTEN`，或改 `env/.env` 的 `HTTP_PORT` |
 | 浏览器打不开 `*.localhost` | 只有宿主能解析；容器之间必须用 IP / 服务名（R15） |
 | curl 200 但浏览器打不开 | 多半是服务端之外的原因：地址栏被补成 `https://`（443 未启用，DEC-42）、DoH、代理插件 |
 | 想要入口冗余 / 双活 | 本环境做不到：单机 + 单 daemon，双实例同故障域（DEC-53）；真冗余需多机 + VIP |

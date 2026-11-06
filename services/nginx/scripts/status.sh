@@ -9,7 +9,7 @@ cd "${DEVOPS_ROOT}"
 
 profile="${1:-nginx}"
 
-PORT="$(awk -F= '$1 == "ENTRY_HTTP_PORT" {print $2}' env/.env 2>/dev/null | tail -1 || true)"
+PORT="$(awk -F= '$1 == "HTTP_PORT" {print $2}' env/.env 2>/dev/null | tail -1 || true)"
 PORT="${PORT:-80}"
 
 echo "== edge health (127.0.0.1:${PORT}) =="

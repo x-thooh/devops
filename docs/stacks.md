@@ -11,7 +11,7 @@
 
 | mode | 容器 | 宿主端口 | 说明 |
 |---|---|---|---|
-| `solo` / `ha` | `nginx`（`172.28.0.11`） | `ENTRY_HTTP_PORT`（默认 80） | 唯一入口；`MODE` 不改变规模 |
+| `solo` / `ha` | `nginx`（`172.28.0.11`） | `HTTP_PORT`（默认 80） | 唯一入口；`MODE` 不改变规模 |
 
 > 节点名就是产品名（不带 `-1`）：没有第 2 个节点时序号只会暗示不存在的兄弟节点（DEC-54）。
 > 同理 `docker exec nginx nginx -t`，不需要猜后缀。
@@ -77,7 +77,7 @@ make stack-reset S=nginx MODE=solo
 
 | 现象 | 原因 / 处理 |
 |---|---|
-| `port is already allocated` | 宿主 80 被占；`lsof -nP -iTCP:80 -sTCP:LISTEN`，或改 `env/.env` 的 `ENTRY_HTTP_PORT` |
+| `port is already allocated` | 宿主 80 被占；`lsof -nP -iTCP:80 -sTCP:LISTEN`，或改 `env/.env` 的 `HTTP_PORT` |
 | 改 `nginx.conf` / `[routes]` 不生效 | 配置要 reload 才载入。`make stack-up S=nginx`（bootstrap 会 `nginx -t && nginx -s reload`）即可；只跑 `make render` 只写宿主文件，运行中的 nginx 看不到。仍不行再 `make stack-reset S=nginx` |
 | 浏览器打不开 `grafana.localhost` | 只有宿主能解析 `*.localhost`；容器之间必须用 IP / 服务名（R15） |
 | `grafana.localhost` 返回 502 | 正常：路由已通，grafana 未起；等观测栈起来后再验 200 |

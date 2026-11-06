@@ -46,9 +46,9 @@ while IFS= read -r node; do
     nodes=$((nodes + 1))
 done < <(ini services "${profile}" "${mode}")
 
-# reload 只发信号，再用入口 /healthz 确认 master 与 worker 都还活着（宿主端口随 ENTRY_HTTP_PORT）
+# reload 只发信号，再用入口 /healthz 确认 master 与 worker 都还活着（宿主端口随 HTTP_PORT）
 # 判据用 nodes 而不是写死节点名：入口只有单实例，改名（nginx-1 → nginx）不该让健康探测静默跳过
-port="$(awk -F= '$1 == "ENTRY_HTTP_PORT" {print $2}' "${DEVOPS_ROOT}/env/.env" 2>/dev/null | tail -1 || true)"
+port="$(awk -F= '$1 == "HTTP_PORT" {print $2}' "${DEVOPS_ROOT}/env/.env" 2>/dev/null | tail -1 || true)"
 port="${port:-80}"
 if [[ "${nodes}" -gt 0 ]]; then
     for _ in $(seq 1 30); do

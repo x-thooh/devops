@@ -113,7 +113,7 @@ make tier-s        # solo 全栈（未实现的栈自动 skip）
 
 | 症状 | 处理 |
 |---|---|
-| `port is already allocated` | `lsof -nP -iTCP:80 -sTCP:LISTEN`；或改 `env/.env` 的 `ENTRY_HTTP_PORT` |
+| `port is already allocated` | `lsof -nP -iTCP:80 -sTCP:LISTEN`；或改 `env/.env` 的 `HTTP_PORT` |
 | doctor 第 7 项失败 | `docker context use orbstack` |
 | doctor 第 8 项失败 | `netstat -rn -f inet \| grep 172.28`；停掉占用该网段的 VPN / 网桥 |
 | `ModuleNotFoundError: yaml` | 跑 `make setup`（依赖在 `.venv` 里）；**不要** `pip install` 进宿主解释器。pypi 直连不通的机器：`make setup PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple` |

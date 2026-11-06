@@ -388,7 +388,7 @@ subnet  | 172.28.0.0/16 | |
 gateway | 172.28.0.1    | |
 
 [stack.nginx]
-# 入口只有单实例（DEC-53）：只有它在 compose 里声明 ports:（宿主发布，ENTRY_HTTP_PORT 可覆盖）
+# 入口只有单实例（DEC-53）：只有它在 compose 里声明 ports:（宿主发布，HTTP_PORT 可覆盖）
 nginx            | 172.28.0.11 | 80,443     | entry | both
 
 [stack.pg]
@@ -676,7 +676,7 @@ make stack-switch S=pg MODE=ha # 先停当前形态再起目标形态（数据�
 
 | 栈 | 必须写死 | 必须持久化的状态文件 | 搞错的症状 |
 |---|---|---|---|
-| nginx | `server_name`（由 `[routes]` 生成）；宿主端口由 `ENTRY_HTTP_PORT` 注入 | 无状态 | 后端全挂时无法判断入口是否存活 |
+| nginx | `server_name`（由 `[routes]` 生成）；宿主端口由 `HTTP_PORT` 注入 | 无状态 | 后端全挂时无法判断入口是否存活 |
 | pg (Patroni) | `scope`、`name`、`restapi`、`dcs.etcd3.hosts`、`bootstrap.dcs` | `.data/patroni-N/`（含 `postgresql0/`）、DCS 数据 | 重启后 leader 丢失 / split-brain |
 | redis-sentinel | `sentinel monitor devmaster 172.28.2.11 6379 2`；`requirepass` 与 `masterauth` **必须一致** | `.data/sentinel/sentinel-N/sentinel.conf`（**运行时重写**）、`.data/sentinel/redis-master/appendonlydir` | 切主后新主拒绝写入 |
 | redis-cluster | `cluster-enabled yes`；总线端口 = 端口 +10000；`cluster-announce-ip` = 容器 IP | `.data/cluster/<node>/nodes.conf`、AOF/RDB | 重启后忘记集群身份，需整栈重建 |
@@ -968,7 +968,7 @@ redis_exporter: oliver006/redis_exporter:v1.67.0  # X.Y.Z：小版本会改指�
 | DEC-39 | **镜像一律来自官方源，但可自定义**：唯一清单 `base/images.yml`；`render.sh` 注入各 compose；`.env` 的 `IMG_<NAME>` 可逐个覆盖，`IMAGE_PREFIX` 可整体前缀（镜像加速器/私有仓库），三者默认都为空 → **默认就是官方镜像** | 官方镜像可审计、无供应链惊喜；但国内拉取慢/企业内网需要私有仓库，所以把"换源"做成一处配置而不是散落在 16 个 compose 里。compose 内禁止字面量镜像（doctor 第 4 项） |
 | DEC-40 | **版本粒度 = `X.Y`（major.minor）**，禁止 `latest`；上游只发 `X.Y.Z` 的镜像（Kafka、各 exporter、RabbitMQ 之外的多数项目）按 `X.Y.Z` pin，并在 `images.yml` 备注原因 | `X.Y` 让补丁自动跟随、跨大版本不漂移；但集群身份文件（`nodes.conf`、`meta.properties`）与版本行为绑定，所以**大版本必须人工升级**。对上游不提供 `X.Y` 标签的镜像，退化为 `X.Y.Z` 反而比 `X.Y` 更可复现 |
 | DEC-41 | **Redis 持久化 = AOF(`everysec`) + RDB 快照并存**（两组 profile 共用 `config/base/redis-base.conf`） | AOF 保证"哨兵切主/节点重启不丢写"，RDB 便于 `backup-all.sh` 在线导出与快速恢复；只开 RDB 会丢最后一次快照之后的写，只开 AOF 则备份/迁移只能靠 `BGREWRITEAOF` 拷贝，体积大且慢 |
-| DEC-42 | **宿主入口 `80/443`**，只有 `nginx` 发布；`.env` 的 `ENTRY_HTTP_PORT` 可把宿主侧整体换到高位端口 | 实测非 root 绑定 80 可用（OrbStack 代理），最短 URL 对日常使用收益最大；但 macOS 上 80 可能被其他常驻服务占用，所以把宿主端口做成一个变量，而不是写死在 compose 里 |
+| DEC-42 | **宿主入口 `80/443`**，只有 `nginx` 发布；`.env` 的 `HTTP_PORT` 可把宿主侧整体换到高位端口 | 实测非 root 绑定 80 可用（OrbStack 代理），最短 URL 对日常使用收益最大；但 macOS 上 80 可能被其他常驻服务占用，所以把宿主端口做成一个变量，而不是写死在 compose 里 |
 | DEC-43 | **`TZ=Asia/Shanghai`**，只写 `base/anchors.yml` 一处；MySQL / Mongo 统一 `utf8mb4` | 本地调试看日志/写 SQL 时不用心算时区；集中一处才能在需要时整体切 UTC（跨时区协作只有这一个开关）。组件内出现 `TZ=` 违反铁律一 |
 | **DEC-44** | **Nacos 直接上 3.x**（D35=B）：`nacos-server`×3 + **`nacos-console`×1**（控制台独立、8080、无状态），schema 用 **3.x** 的 `mysql-schema.sql`；端口表/路由/身份清单/probe 全部按 3.x 更新 | 3.x 是官方方向，2.x 已进入维护期；控制台拆成无状态前端后，1 个 console 指向 3 个 server 即可（少 2 个容器、少 2 份状态）。代价是**端口与 schema 与 2.x 不兼容**，且 3.x 资料较新 → 把"console 打包方式 / health 与 metrics 路径 / schema 文件名 / 鉴权默认"列为 P5 首次启动的**锁定四项**（R28） |
 | **DEC-45** | **P0 生成与运行契约**（D04–D07 全部取 A）：凭据用 `env/.env` + `scripts/gen-secrets.sh`（chmod 600，gitignore）；`base/anchors.yml` 由 `render-all.py` 在生成期展开；`services/*/compose.yml` 只作手写骨架，渲染器生成 `.generated/<stack>.yml` 与根聚合 compose；ini 保持竖线 5 列、`mode` 缺省 `ha` | 四项都是 P0 阻塞项，共同理由是"唯一输入 + 生成物可丢弃"：IP/镜像/锚点/凭据各只有一个事实源，根 compose 与 `.generated/` 可随时重建。代价是不能手改生成物，且每次改 ini/base 后必须 `make render`；doctor 第 4/5/13 项兜底 |
@@ -1114,7 +1114,7 @@ nacos.localhost        | 172.28.13.32 | 8080  | subdomain-only
 docsify.localhost      | 172.28.20.11 | 3000  | subdomain-only
 ```
 
-> 入口只有 `nginx` 一个实例，它把 `80` 发布到宿主（`ENTRY_HTTP_PORT` 可覆盖）；没有第二入口（DEC-53）。
+> 入口只有 `nginx` 一个实例，它把 `80` 发布到宿主（`HTTP_PORT` 可覆盖）；没有第二入口（DEC-53）。
 > 其余 UI 一律经 nginx，不直接发布端口（DEC-3）。
 
 ### 15.4 nginx 生成规则
@@ -1127,7 +1127,7 @@ server {
     server_name <host>;
 
     proxy_http_version 1.1;
-    proxy_set_header Host $http_host;                 # 保留 ENTRY_HTTP_PORT 的端口，上游跳转不丢 port
+    proxy_set_header Host $http_host;                 # 保留客户端传入的端口（HTTP_PORT≠80 时），上游跳转不丢 port
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
@@ -1146,7 +1146,7 @@ server {
 }
 ```
 
-> 用 `$http_host` 而不是 `$host`：`ENTRY_HTTP_PORT≠80` 时浏览器带端口进来，`$host` 会把端口截掉，
+> 用 `$http_host` 而不是 `$host`：`HTTP_PORT≠80` 时浏览器带端口进来，`$host` 会把端口截掉，
 > 上游（Grafana 等）按 Host 生成的绝对链接就会丢端口。
 
 入口是**单实例**（DEC-53）：同一份配置只跑一份，不存在"两个实例生成相同配置"的伪冗余。
@@ -1163,7 +1163,7 @@ server {
 |---|---|
 | 宿主浏览器 | `*.localhost` 自动 → `127.0.0.1`（macOS 原生，**不改 `/etc/hosts`**） |
 | 容器之间 | **禁止**用 `.localhost`；一律用容器 IP 或服务名（R15） |
-| 端口 | 仅 `80`（nginx）；`443` 保留给后续自签 TLS；宿主侧端口由 `.env` 的 `ENTRY_HTTP_PORT` 决定（默认 80） |
+| 端口 | 仅 `80`（nginx）；`443` 保留给后续自签 TLS；宿主侧端口由 `.env` 的 `HTTP_PORT` 决定（默认 80） |
 
 ---
 

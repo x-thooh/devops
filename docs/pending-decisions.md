@@ -51,7 +51,7 @@
 | **F23** | **镜像默认官方源 + 可自定义**：`base/images.yml` 唯一清单，`.env` 的 `IMG_<NAME>` / `IMAGE_PREFIX` 可覆盖；compose 禁止字面量镜像 | plan DEC-39 / §10 |
 | **F24** | **版本形态 `X.Y`**（禁止 `latest`）；上游只发 `X.Y.Z` 的按 `X.Y.Z` pin 并注明 | plan DEC-40 |
 | **F25** | **Redis 持久化 = AOF everysec + RDB 快照** | plan DEC-41 / D31 |
-| **F26** | **宿主入口 `80/443`**，仅 nginx 发布，`ENTRY_HTTP_PORT` 可覆盖 | plan DEC-42 / D03 |
+| **F26** | **宿主入口 `80/443`**，仅 nginx 发布，`HTTP_PORT` 可覆盖 | plan DEC-42 / D03 |
 | **F27** | **`TZ=Asia/Shanghai`**（只在 `base/anchors.yml` 出现），MySQL/Mongo `utf8mb4` | plan DEC-43 / D08 |
 | **F28** | **RabbitMQ 端口含 Erlang 分发段 `35672-35682`**（与 v2.3 一致；doctor 第 3 项按区间校验） | plan §5.1 / §6.2 / Q10 |
 | **F29** | **Nacos 升 3.x**：`nacos-server`×3 + `nacos-console`×1（8080，无状态），3.x schema；P5 锁定四项待确认 | plan DEC-44 / D35 / R28 |
@@ -103,7 +103,7 @@
 
 **结论**：**`80/443`**（实测非 root 绑定 80 可用，OrbStack 代理），保留 B 作为 `.env` 覆盖项（plan DEC-42）。
 
-- 只有 `nginx` 声明 `ports:`，默认映射 `80:80`；`ENTRY_HTTP_PORT=8080` 可整体改到高位端口，**不需要改任何 compose**。
+- 只有 `nginx` 声明 `ports:`，默认映射 `80:80`；`HTTP_PORT=8080` 可整体改到高位端口，**不需要改任何 compose**。
 - `443` 暂不启用（自签 TLS 列 N03），但端口位与 `listen 443 ssl` 占位保留在 `config/nginx.conf` 的注释里。
 - 入口只有一个实例（`nginx`），没有第二个入口可直连（v4.6 删 `nginx-2`，DEC-53）。
 
@@ -519,7 +519,7 @@ P0 的 8 项决策全部落定，可以直接进入 `plan §13` 的 P0 实施：
 |---|---|---|
 | D01 | 官方镜像 + 可自定义（`images.yml` + `.env` 覆盖） | DEC-39 |
 | D02 | 版本粒度 `X.Y`，禁止 `latest` | DEC-40 |
-| D03 | 入口 `80/443`，仅 nginx 发布，`ENTRY_HTTP_PORT` 可覆盖 | DEC-42 |
+| D03 | 入口 `80/443`，仅 nginx 发布，`HTTP_PORT` 可覆盖 | DEC-42 |
 | D04 | 单一 `env/.env` + `gen-secrets.sh`，`make secrets-show` 可打印（按推荐） | — |
 | D05 | `base/anchors.yml` 生成期展开（按推荐） | — |
 | D06 | compose 全生成，不手写 include（按推荐） | — |

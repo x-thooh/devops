@@ -7,7 +7,7 @@ services:
     profiles: ["nginx"]
     container_name: nginx
     ports:
-      - "${ENTRY_HTTP_PORT:-80}:80"
+      - "${HTTP_PORT:-80}:80"
     volumes:
       - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./.data/conf.d:/etc/nginx/conf.d:ro
