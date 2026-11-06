@@ -9,8 +9,8 @@
 
 | 项 | 状态 |
 |---|---|
-| 已有内容 | `docs/`（方案与决策文档）；`base/`、`stock/network.ini`、`scripts/`（ini 解析 / render-all / doctor / stack / tier）、`Makefile`、`env/.env.example`、`README.md`；**17 个组件目录**（nginx / pg / redis / mysql / mongo / kafka / rocketmq / rabbitmq / etcd / consul / nats / nacos / prometheus / alertmanager / grafana / jaeger / docsify），`docs/stacks.md` 每栈一章 |
-| 当前版本 | **plan v4.6**：15 域 / 17 目录 / 18 部署单元 / 28 → 70 容器（Nacos 3.x：server×3 + console；v4.4 加 docsify；v4.6 删 nginx 的假 ha，并把单实例栈的节点名去掉序号：`nginx` / `docsify`，DEC-54） |
+| 已有内容 | `docs/`（方案与决策文档）；`base/`、`stock/network.ini`、`scripts/`（ini 解析 / render-all / doctor / stack / tier）、`Makefile`、`env/.env.example`、`README.md`；**18 个组件目录**（nginx / pg / redis / mysql / mongo / kafka / rocketmq / rabbitmq / etcd / consul / nats / nacos / prometheus / alertmanager / grafana / jaeger / docsify / hindsight），`docs/stacks.md` 每栈一章 |
+| 当前版本 | **plan v4.7**：16 域 / 18 目录 / 19 部署单元 / 29 → 71 容器（Nacos 3.x：server×3 + console；v4.4 加 docsify；v4.6 删 nginx 的假 ha，并把单实例栈的节点名去掉序号：`nginx` / `docsify`，DEC-54；v4.7 加 hindsight——复用 pg 栈做存储后端，pg 镜像带 pgvector，DEC-55） |
 
 ### 0.1 文档层级（只读与可写要分清）
 
@@ -40,6 +40,7 @@
 | `.generated/<stack>.yml` | 单栈渲染结果（生成物） | 不提交；`render-all.py` 每次覆盖 |
 | `compose.yml`、`compose.generated.yml` | 根聚合入口（生成物，两份同内容） | 手改无效，`render-all.sh` 会覆盖；不提交 |
 | `services/nginx/.data/conf.d/`、`*/.data/**/prometheus.yml`、`sentinel.conf`、`nodes.conf` | 渲染产物 / 运行时重写 | 手改会被下一次 render 或重启冲掉 |
+| `services/<stack>/.data/active/*.env`（如 `hindsight.env`，含渲染后的 DATABASE_URL） | 渲染 env（生成物，`render.sh` 按 MODE 产出，chmod 600） | 不入库、不手改；改 URL 请改 render.sh（plan §5.5.2 / DEC-55） |
 
 > **一句话**：`ini`、`base/`、`mise.toml`、`services/*/compose.yml` 与 `config/` 是输入；`.generated/`、根 `compose*.yml`、`.venv/` 与 `.data/` 是输出。只改输入。
 
@@ -49,10 +50,10 @@
 
 | 层 | 单位 | 数量 | 你要动的文件 |
 |---|---|---|---|
-| 域 | `/24` IP 块 | 15 | `stock/network.ini` |
-| 组件目录 | `services/<name>/` | 17 | `compose.yml` + `config/` + `scripts/` |
-| 部署单元（profile） | `compose.yml` 的 `profiles` | 18 | 同上 |
-| 容器 | service | 28 / 70 | 同上 |
+| 域 | `/24` IP 块 | 16 | `stock/network.ini` |
+| 组件目录 | `services/<name>/` | 18 | `compose.yml` + `config/` + `scripts/` |
+| 部署单元（profile） | `compose.yml` 的 `profiles` | 19 | 同上 |
+| 容器 | service | 29 / 71 | 同上 |
 
 - `services/redis/` 是**唯一复合栈**（一个目录两组互斥 profile）。它成立的四条硬条件见 plan §8.0.1，**不要再造第二个**，除非四条都满足。
 - 新增组件的固定步骤：plan §17（ini 取预留块 → 建目录 → `render-all` → 可选加路由 → `doctor` 自动纳入）。
@@ -71,8 +72,9 @@
 6. **不改 `docs/archive/`**；不在容器内用 `.localhost`（R15）。
 7. **演练只用 `docker compose stop`**，禁止 `docker kill`（DEC-17 / R12）。
 8. **容器 `Up` ≠ 集群成立**：Docker daemon 重启只复活容器，不恢复集群不变量（如 mysql 的
-   `group_replication_start_on_boot=OFF`）。按依赖顺序重跑 `make stack-up`（先 mysql 后 nacos），
-   **不要**为了省事把 `start_on_boot` 改成 `ON`（DEC-48 / plan §8.4）。
+   `group_replication_start_on_boot=OFF`）。按依赖顺序重跑 `make stack-up`（先 mysql 后 nacos；
+   先 pg 后 hindsight——hindsight 的 `pre.sh` 要连外部 PG 建 role/db/extension，pg 未起则起栈失败），
+   **不要**为了省事把 `start_on_boot` 改成 `ON`（DEC-48 / plan §8.4 / DEC-55 / R30）。
 
 ---
 
@@ -90,7 +92,7 @@ make stack-status S=<profile>
 make stack-reset  S=<profile>   # 只清本 profile 的 .data/ 子树
 make stack-shell  S=<profile> N=<node>
 make failover-drill S=pg|redis-sentinel|redis-cluster|mysql|mongo|kafka|rocketmq
-make ui-open S=grafana|jaeger|rabbitmq|consul|prometheus|alertmanager|nacos|docsify
+make ui-open S=grafana|jaeger|rabbitmq|consul|prometheus|alertmanager|nacos|docsify|hindsight
 make trace-demo             # 推一条 OTLP trace 给 jaeger
 ```
 
@@ -98,6 +100,7 @@ make trace-demo             # 推一条 OTLP trace 给 jaeger
 >
 > `MODE` 省略时**不是 solo**：`stack.sh` 读 `.mode-<profile>` marker 沿用当前部署形态，从没部署过才回退 solo，并打印 `# MODE 未指定 -> <mode>`（DEC-50）。要换形态必须显式写 `MODE=solo|ha`。
 > `stack-up` / `stack-reset` 是**两段式**：起容器 → `bootstrap` → 再等健康（DEC-52）——需要先 bootstrap 才转健康的栈（mysql 的 Router）若先 `--wait` 就永远等不到。
+> 跨栈依赖走 `scripts/pre.sh` 钩子（在**起容器之前**执行，如 hindsight 连 pg 建 role/db/extension、nacos 连 mysql 建 schema；依赖不可达直接失败，DEC-36 / DEC-55）。
 
 ---
 
@@ -119,7 +122,7 @@ make trace-demo             # 推一条 OTLP trace 给 jaeger
 
 - **语言**：中文；表格优先；章节引用一律用 `§x.y`，引用前确认目标章节存在（当前 §0–§17）。
 - **编号只增不复用**：
-  - ADR `DEC-1` … `DEC-52`（顺序即时间顺序）；
+  - ADR `DEC-1` … `DEC-55`（顺序即时间顺序）；
   - 风险 `R-n`（R9/R20/R21 已随范围删除，编号留空不复用）；
   - 决策 `D-n` / `F-n` / `N-n`（D 可作废但不重编号，如 D17）。
 - **一处决策，三处同步**：`plan §11 ADR` + `pending-decisions`（标 ✅ 已定案）+ 受影响的表格/计数。

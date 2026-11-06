@@ -1,0 +1,33 @@
+# 手写骨架：不写 image / logging / restart / networks / IP / ports / TZ
+# Hindsight（agent 记忆服务，.21 域，DEC-55）：单实例双端口同 IP——
+#   8888 = API（REST + 每 bank 的 MCP，健康端点 /health）；9999 = Control Plane UI。
+# 宿主访问一律经 nginx：hindsight.localhost → :9999（UI）、hindsight-api.localhost → :8888（API），
+#   本栈不发宿主端口（铁律：除 nginx 外不发布，plan §15 / DEC-55）。
+# 存储后端：复用 pg 栈（外部 Postgres + pgvector 扩展，同 nacos 复用 mysql 的 DEC-36 模式）
+#   DATABASE_URL 含 IP，由 scripts/render.sh 按 MODE 渲染进 .data/active/hindsight.env
+#     solo → patroni-1:5432；ha → pg-haproxy-1:5000（主写）
+#   role / db / pgvector 扩展由 scripts/pre.sh 幂等建立（跨栈依赖：pg 未起则起栈失败）
+# LLM provider/key/model 走 env/.env 直插 ${...}（默认 mock 可无钥证"能跑"；接真实模型时改 provider，密钥不入库）。
+# HA 豁免（v1 单实例，同 docsify / jaeger）：应用层多副本 + 队列化部署列为后续。
+services:
+  hindsight:
+    x-image: hindsight
+    profiles: ["hindsight"]
+    container_name: hindsight
+    env_file:
+      - ./.data/active/hindsight.env
+    environment:
+      HINDSIGHT_API_LLM_PROVIDER: ${HINDSIGHT_LLM_PROVIDER:-mock}
+      HINDSIGHT_API_LLM_API_KEY: ${HINDSIGHT_LLM_API_KEY:-}
+      HINDSIGHT_API_LLM_MODEL: ${HINDSIGHT_LLM_MODEL:-mock-model}
+      HINDSIGHT_API_HOST: "0.0.0.0"
+      HINDSIGHT_API_PORT: "8888"
+      HINDSIGHT_CP_DATAPLANE_API_URL: "http://localhost:8888"
+    healthcheck:
+      # 首次启动含 schema migrate（外部 PG 已建好 role/db/extension），比 pg0 内建快得多；
+      # 锚点会补齐 interval/timeout，start_period 给足冷启动窗口。
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8888/health || exit 1"]
+      start_period: 60s
+      retries: 30
+    mem_limit: 1g
+    cpus: 1.0

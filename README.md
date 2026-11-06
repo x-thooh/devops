@@ -7,10 +7,10 @@
 
 | 已实现 | 说明 |
 |---|---|
-| `stock/network.ini` | 15 域 / 17 目录 / 18 部署单元 / 70 行花名册；IP、端口、mode、路由唯一权威 |
+| `stock/network.ini` | 16 域 / 18 目录 / 19 部署单元 / 71 行花名册；IP、端口、mode、路由唯一权威 |
 | `base/` | `network.yml`（唯一 subnet）、`anchors.yml`、`images.yml`、`jvm/heap.env` |
 | 生成器 | `scripts/ini.py` + `scripts/render-all.py` → `.generated/*.yml` + 聚合 compose |
-| `services/*`（17 个） | nginx / pg / redis（复合栈：sentinel + cluster）/ mysql / mongo / kafka / rocketmq / rabbitmq / etcd / consul / nats / nacos / prometheus / alertmanager / grafana / jaeger / docsify |
+| `services/*`（18 个） | nginx / pg / redis（复合栈：sentinel + cluster）/ mysql / mongo / kafka / rocketmq / rabbitmq / etcd / consul / nats / nacos / prometheus / alertmanager / grafana / jaeger / docsify / hindsight |
 | `services/nginx/` | 单实例入口（只有 `nginx`，无 ha，DEC-53），路由由 `[routes]` 生成 |
 | `make doctor` | 15 项体检，按"已启用的栈"取集合（第 15 项按部署形态校运行态） |
 | `Makefile` | render / doctor / up / tier / stack-* / prepull / backup-all / ui-open / failover-drill / trace-demo |
@@ -52,7 +52,7 @@ make up            # = make tier-a
 make tier-s        # solo 全栈（未实现的栈自动 skip）
 ```
 
-> 18 个 profile 的 solo / ha 命令、容器构成与切换注意事项，见 [`docs/quickstart.md`](docs/quickstart.md)；
+> 19 个 profile 的 solo / ha 命令、容器构成与切换注意事项，见 [`docs/quickstart.md`](docs/quickstart.md)；
 > `nginx` 只有单实例（`MODE` 不改变规模，DEC-53）。
 
 ## 输入 / 输出契约

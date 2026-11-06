@@ -1,6 +1,6 @@
 # 待决事项清单（决策清单）
 
-> 配套文档：`docs/plan.md`（**v4.5：15 域，Nacos 3.x（server×3 + console）+ docsify**）。本文件只列**未定案**的问题。
+> 配套文档：`docs/plan.md`（**v4.7：16 域，Nacos 3.x（server×3 + console）+ docsify + hindsight**）。本文件只列**未定案**的问题。
 > 每项给出：问题 → 选项 → 我的推荐 → 影响面 → 阻塞阶段。
 > **回复格式**：只需写 `D01=A, D31=A` 这样的键值即可；同意的推荐值写 `OK`。
 >
@@ -16,7 +16,7 @@
 | 分栈决策（P1–P7） | 11（D09–D16、D18–D19、D36） | 各自所属阶段 |
 | 方案缺口 | 16（D20–D34、D37） | 建议 P0/P1 一并定 |
 | 明确不做 | 12（N01–N12） | 已排除，供你否决 |
-| 已定案 | 36（F01–F36） | 已写入 plan v4.5 |
+| 已定案 | 39（F01–F39） | 已写入 plan v4.7 |
 
 **最小决策集**：**已清零** —— P0 的 8 项（D01–D08）全部落定，可直接进入 P0 实施（plan §13）。
 
@@ -27,7 +27,7 @@
 | # | 决策 | 出处 |
 |---|---|---|
 | F01 | 单一网络 `devnet` = `172.28.0.0/16`，网关 `.1` | plan §3.1 |
-| F02 | 块号 = 域号，14 块全部启用（`.0.x` edge … `.13.x` nacos、`.12.x` obs） | plan §3.2 |
+| F02 | 块号 = 域号，16 块启用（`.0.x` edge … `.13.x` nacos、`.12.x` obs、`.20.x` docsify、`.21.x` hindsight） | plan §3.2 |
 | F03 | 块内尾号约定（`.11–19` 核心 / `.21–29` 副本与哨兵 / `.31–39` 代理、DCS、前端 / `.41–49` exporter / `.51–59` 客户端） | plan §3.3 |
 | F04 | 目录按组件内聚，不变量集中 `base/` | plan §2 |
 | F05 | 数据放各组件 `.data/`，`**/.data/` 一条 gitignore | plan §4 |
@@ -40,7 +40,7 @@
 | F12 | observability 域（`.12.x`）内按组件拆 4 栈：prometheus / alertmanager / grafana / jaeger | plan DEC-20/24/29 |
 | F13 | UI 统一经 `<svc>.localhost` 子域，路由表进 ini `[routes]` | plan DEC-21/22 |
 | F14 | 可观测性四栈各自带 compose/config/scripts/.data | plan §16.1 |
-| F15 | 三层模型：域（15）/ 目录（17）/ 部署单元（18）/ 容器（28→70） | plan §2.1 |
+| F15 | 三层模型：域（16）/ 目录（18）/ 部署单元（19）/ 容器（29→71） | plan §2.1 |
 | F16 | 块号与 `[stack.*]` 命名不随范围调整删除 | plan DEC-28 |
 | F17 | `services/jaeger/`（`.12.32`）：OTLP + Badger + UI；不伪装双实例 HA | plan DEC-29/30 / §16.5 |
 | F18 | `redis` 复合栈（一目录两组互斥 profile；数据分 `.data/sentinel/`、`.data/cluster/`） | plan DEC-31/32 / §8.0.1 |
@@ -64,6 +64,7 @@
 | **F36** | **`stack-up` / `stack-reset` 改两段式（起容器 → bootstrap → 等健康），mysql 首次成组前先解 `super_read_only`**：单段 `up -d --wait` 对需要 bootstrap 才转健康的栈是顺序死循环，这让 DEC-48 的"重跑 `make stack-up` 即恢复"对 mysql 名实不符 | plan DEC-52 / §8.4 / stacks.md 全局约定 |
 | **F37** | **移除 nginx 的 ha 形态**：删 `nginx-2`（`.0.12` 回空闲），ini 只留 `nginx`（`mode=both`）；doctor 第 11 项 nginx 期望 `entry=1`；`status.sh` 去掉第二入口探测 | plan DEC-53 / §5.2 / §15.3 |
 | **F38** | **单实例栈的节点名不带序号**：`nginx-1 → nginx`、`docsify-1 → docsify`；多节点栈仍用 `<stack>-<node>`。同时把"仅 `role=entry` 可发宿主端口"从硬编码节点名改为按 ini 角色判定（`render-all.py` + doctor 第 6 项），`nginx` 的 `status.sh` / `bootstrap.sh` 不再写死节点名 | plan DEC-54 / R11 / §5 花名册 |
+| **F39** | **启用第 16 域 `.21.x` hindsight**（§17 预留块第二个）：单容器 `ghcr.io/vectorize-io/hindsight:0.6`（8888 API/MCP + 9999 Control Plane），**存储后端复用 pg 栈**（`services/pg/Dockerfile` 加装 pgvector → tag bump `devops/patroni:4.0.4-pv0.8`，`DATABASE_URL` 按 MODE 切：solo→`patroni-1:5432` / ha→`pg-haproxy-1:5000`，role/db/extension 由 `pre.sh` 幂等建）；UI/API 经 `hindsight{,-api}.localhost` 反代、不发宿主端口；LLM provider 走 `env/.env`（默认 `mock` 可无钥启动，密钥绝不入库，真实 key 由 operator 自行填入）；HA 全量豁免（pg 后端 Patroni 单主）；跨栈依赖登记为 R30（与 R25 同型） | plan DEC-55 / §5.3 / §5.5.2 / R30 / stacks.md hindsight 章 |
 
 ---
 
@@ -127,7 +128,7 @@
 
 **结论**：**A**。`base/anchors.yml` 定义 `x-common:`，`render-all.py` 在生成期展开为各 service 的 `logging` / `restart` / `TZ` / 健康检查默认值；组件骨架内出现同类字段即判失败。
 
-**问题**：`logging` / `restart` / `TZ` / 健康检查默认值如何复用到 18 个目录？
+**问题**：`logging` / `restart` / `TZ` / 健康检查默认值如何复用到 19 个目录？
 
 **实测背景**：`include` 只合并 project，**YAML 锚点不跨文件继承**。
 
@@ -152,7 +153,7 @@
 
 ### D07 `stock/network.ini` 格式确认 ✅ 已定案（A）
 
-**结论**：**A**。竖线分隔 5 列 `name | ip | ports | role | mode`；`mode` 缺省 = `ha`；`scripts/ini.py` 零依赖解析并校验 70 行 / 18 profile。
+**结论**：**A**。竖线分隔 5 列 `name | ip | ports | role | mode`；`mode` 缺省 = `ha`；`scripts/ini.py` 零依赖解析并校验 71 行 / 19 profile。
 
 现方案：竖线分隔 5 列 `name | ip | ports | role | mode`，`awk -F'|'` 解析，`mode` 缺省 = `ha`。
 
@@ -173,7 +174,7 @@
 - 日志时间戳统一为本地时间（+08:00）；跨时区协作时如需 UTC，改 `base/anchors.yml` 一处即可。
 - P0 验收：任一容器内 `date` 显示 `CST +0800`。
 
-**影响**：全部 18 个部署单元的日志与时间字段
+**影响**：全部 19 个部署单元的日志与时间字段
 **阻塞**：无（P0 按此落地）
 
 ---

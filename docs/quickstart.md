@@ -1,6 +1,6 @@
 # Quickstart：逐栈起停（solo / ha）
 
-> 一页速查：18 个部署单元（profile）各自的 solo 与集群（ha）启动命令。
+> 一页速查：19 个部署单元（profile）各自的 solo 与集群（ha）启动命令。
 > 设计源见 [`plan.md`](plan.md)（§5 花名册 / §8 组件契约），每栈验证与演练口径见 [`stacks.md`](stacks.md)，
 > 执行层约束见 [`../AGENTS.md`](../AGENTS.md)。本页只回答「用什么命令起、起哪几个容器、切形态要注意什么」。
 
@@ -18,7 +18,7 @@ make doctor     # 15 项体检
 ## 一键起全栈
 
 ```bash
-make tier-s                       # 全部 solo（每栈单实例，28 容器基线）
+make tier-s                       # 全部 solo（每栈单实例，29 容器基线）
 make up TIER=a                    # A 档默认形态（档位定义见 Makefile）
 ```
 
@@ -98,7 +98,7 @@ make stack-up S=nacos   MODE=ha
 
 ### 观测四栈（单实例栈）
 
-`prometheus` ha 语义是冗余采集而非故障转移；`alertmanager` / `grafana` / `jaeger` / `docsify` 为 HA 全量豁免，`ha` 与 `solo` 同规模。
+`prometheus` ha 语义是冗余采集而非故障转移；`alertmanager` / `grafana` / `jaeger` / `docsify` / `hindsight` 为 HA 全量豁免，`ha` 与 `solo` 同规模。
 
 | profile | solo 起 | ha 起 |
 |---|---|---|
@@ -107,6 +107,7 @@ make stack-up S=nacos   MODE=ha
 | `grafana` | grafana | grafana（同规模） |
 | `jaeger` | jaeger | jaeger（同规模） |
 | `docsify` | docsify | docsify（同规模） |
+| `hindsight` | hindsight | hindsight（同规模） |
 
 ```bash
 make stack-up S=prometheus   MODE=solo
@@ -115,6 +116,7 @@ make stack-up S=alertmanager MODE=solo
 make stack-up S=grafana      MODE=solo
 make stack-up S=jaeger       MODE=solo
 make stack-up S=docsify      MODE=solo
+make stack-up S=hindsight    MODE=solo
 ```
 
 ## 注意事项
@@ -129,8 +131,8 @@ make stack-up S=docsify      MODE=solo
    ```
 
    无状态栈（nginx / grafana / jaeger / docsify / prometheus / alertmanager）可直接就地 `stack-up ... MODE=ha`；
-   nginx 本来就只有单实例，`MODE` 不改规模（DEC-53）。
-5. **依赖顺序**：`nacos` 需 `mysql` 先起（ha 经 Router `172.28.4.31:6446`，solo 直连 `mysql-1:3306`）；`pg` 的 ha 自带 pg-dcs(etcd)，无需外部 etcd。
+   nginx 本来就只有单实例，`MODE` 不改规模（DEC-53）。`hindsight` 是 `both` 节点，但 DATABASE_URL 按 MODE 切（solo→`patroni-1:5432` / ha→`pg-haproxy-1:5000`），**切形态前必须先把 pg 起在目标形态**（R30）。
+5. **依赖顺序**：`nacos` 需 `mysql` 先起（ha 经 Router `172.28.4.31:6446`，solo 直连 `mysql-1:3306`）；`hindsight` 需 `pg` 先起（ha 经 `pg-haproxy-1:5000`，solo 直连 `patroni-1:5432`，pgvector 扩展由 `pre.sh` 建立，DEC-55 / R30）；`pg` 的 ha 自带 pg-dcs(etcd)，无需外部 etcd。
 
 ## 验证与状态
 
@@ -141,4 +143,4 @@ make stack-shell  S=<profile> N=<node> # 进容器，如 make stack-shell S=kafk
 make ui-open      S=grafana            # 宿主浏览器打开 <svc>.localhost（需对应栈已起）
 ```
 
-全栈 solo 的成功基线：`make doctor` 15 PASS / 0 WARN / 0 FAIL，28 容器全部 healthy，18 个 marker 均为 `solo`。
+全栈 solo 的成功基线：`make doctor` 15 PASS / 0 WARN / 0 FAIL，29 容器全部 healthy，19 个 marker 均为 `solo`。

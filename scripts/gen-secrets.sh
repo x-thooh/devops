@@ -31,6 +31,13 @@ RABBITMQ_PASSWORD=$(rand_hex)
 RABBITMQ_ERLANG_COOKIE=$(rand_hex)
 GRAFANA_ADMIN_PASSWORD=$(rand_hex)
 NACOS_TOKEN_SECRET_KEY=$(rand_b64)
+
+# hindsight（.21 域）：默认 mock 可无钥起；接真实 LLM 时改成 openai 等并填 key（本文件 gitignore，密钥不入库）
+HINDSIGHT_LLM_PROVIDER=mock
+HINDSIGHT_LLM_API_KEY=
+HINDSIGHT_LLM_MODEL=mock-model
+# hindsight 的外部存储后端（复用 pg 栈，DEC-55）：pre.sh 用它建 role `hindsight` + db `hindsight`
+HINDSIGHT_DB_PASSWORD=$(rand_hex)
 EOF
 chmod 600 "${ENV_FILE}"
 echo "wrote env/.env (chmod 600); use 'make secrets-show' to print"

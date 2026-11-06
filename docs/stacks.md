@@ -694,3 +694,61 @@ make stack-reset S=docsify MODE=solo
 | 页面能开但样式/脚本缺失（白底无侧栏） | `.data/site/assets/` 丢了或与镜像版本不同步；`make render` 重拷，必要时按上表从镜像重新导出 |
 | 子目录文档（`docs/archive/*`）里的相对链接点不开 | 链接按仓库目录书写（相对于文档自身），子目录内互指正常；跨回顶层请写 `../plan.md` |
 | 想直接返宿主端口 8080（原草稿写法） | 违反 F06（只有 `nginx` 发布宿主端口）；走 `docsify.localhost` |
+
+---
+
+## hindsight（`172.28.21.11`，agent 记忆服务）
+
+接入 [Vectorize Hindsight](https://github.com/vectorize-io/hindsight)：给 agent 提供长期记忆（retain / recall / MCP）。单容器，**存储后端复用 pg 栈**（Patroni + pgvector 扩展，与 nacos 复用 mysql 同型，DEC-55 / R30）。**第 16 域，由 §17 预留块 `.20–.29` 的第二个 `.21` 启用**。
+
+| mode | 容器 | 说明 |
+|---|---|---|
+| `solo` | `hindsight`（`172.28.21.11:8888` API/MCP + `:9999` Control Plane） | DATABASE_URL → `patroni-1:5432`；`mode=both`：应用层同一节点（HA 全量豁免，§5.3）；节点名不带序号（DEC-54） |
+| `ha` | 同上 | DATABASE_URL → `pg-haproxy-1:5000`（Patroni 主写自动路由到 leader）；pg 侧真 HA 由 Patroni 自带 |
+
+| 端口 | 用途 | 入口 |
+|---|---|---|
+| `8888` | REST API + MCP（`/mcp/{bank_id}/`）+ `/health` | `http://hindsight-api.localhost`；容器间直连 `172.28.21.11:8888` |
+| `9999` | Control Plane UI（前端资产按根路径加载，无 base-path → 只能子域） | `http://hindsight.localhost` |
+
+LLM provider 走 `env/.env`（`HINDSIGHT_LLM_PROVIDER` / `HINDSIGHT_LLM_API_KEY` / `HINDSIGHT_LLM_MODEL`，`make secrets` 默认 `mock` = 可无钥启动；换 openai/anthropic 等只改 `.env`，不动 compose）。`HINDSIGHT_DB_PASSWORD` 由 `gen-secrets.sh` 生成，`pre.sh` 用它建 `hindsight` role。`/health` 只证明服务与外部 PG 就绪，**不校验 provider/key**——凭据问题要到真实 retain/recall 才显形。
+
+```bash
+make stack-up S=pg MODE=solo              # 必须先起 pg（R30）
+make stack-up S=hindsight MODE=solo       # pre 建 role/db/extension → 起容器 → bootstrap 等 /health
+make stack-status S=hindsight             # backend pg + api(/health) + cp(9999) + 两条 nginx 路由状态码
+make ui-open S=hindsight                  # http://hindsight.localhost
+curl -s http://172.28.21.11:8888/health   # 宿主直连容器 IP
+# 观察 pg 侧建表结果（上游 alembic migrate 首启时跑）：
+docker exec patroni-1 psql -h 172.28.1.11 -U postgres -d hindsight -c '\dx' -c '\dt'
+```
+
+### solo ↔ ha 语义差异
+
+`hindsight` 应用层本身同一节点（`mode=both`）；差别在 **DATABASE_URL 指向**：
+
+- solo → `patroni-1:5432`：pg 栈只跑一份 postgres，直连节点即可；
+- ha → `pg-haproxy-1:5000`：Patroni 三节点 + HAProxy 主写路由，切主时 URL 不变。
+
+切换形态时必须重跑 `make stack-up S=hindsight MODE=<new-mode>` 让 render 覆写 `.data/active/hindsight.env`；只改 marker 不重起，`DATABASE_URL` 就还指旧形态。`make failover-drill` 对本栈不适用（没有可切换的 hindsight 副本），pg 侧的切换用 `make failover-drill S=pg`。
+
+### 重置
+
+```bash
+make stack-reset S=hindsight MODE=solo
+```
+
+只清本目录 `.data/` 里的渲染 env（然后 render + pre 会重来一遍）；**不会删 pg 侧的 `hindsight` 数据库**——记忆数据要真清得进 pg：`docker exec patroni-1 psql -h 172.28.1.11 -U postgres -c 'DROP DATABASE hindsight'`，下一次 `stack-up` 的 `pre.sh` 会重建。要连 role 一起清：再 `DROP ROLE hindsight`。
+
+### 坑
+
+| 现象 | 原因 / 处理 |
+|---|---|
+| `pre.sh` 报"pg 栈未运行" | 跨栈依赖（R30）：先 `make stack-up S=pg MODE=<same-mode>`；ha 形态还要 Patroni 已选出 leader（`docker exec patroni-1 patronictl list` 看到 1L2R） |
+| `pre.sh` 报 `no pg_hba.conf entry for host "172.28.x.x"` | solo pg 的 `pg_hba.conf` 缺 devnet 段：`services/pg/scripts/render.sh` 已在 entry.sh 里追加 `172.28.0.0/16 trust # devops-cross-stack`；老卷宗要 `docker restart patroni-1` 让新 entry 生效 |
+| 上游 migrate 报 `type "vector" does not exist` | pg 镜像没带 pgvector：确认 `docker images devops/patroni` 有 `4.0.4-pv0.8` tag（`base/images.yml` 已切）；缺则 `docker build -t devops/patroni:4.0.4-pv0.8 services/pg/` |
+| 首次启动慢（1–2 分钟）才 `/health` 200 | 上游要下 HF 模型（`BAAI/bge-small-en-v1.5` + cross-encoder）+ 外部 PG 里跑 alembic migrate；`bootstrap.sh` 给 30×3s 轮询窗口，宿主网络抖动时可能重跑一次 `stack-up` |
+| `HINDSIGHT_LLM_API_KEY` 配了但 retain 报 401/403 | provider / model / key 三者要配套（`mock` 配 `mock-model`）；只改 `.env` 后需 `make stack-up S=hindsight` 重建容器才生效 |
+| `hindsight.localhost` 返回 `devops edge (nginx) is up` | nginx 未 reload 新路由：`make stack-up S=nginx`（bootstrap 会 `nginx -s reload`） |
+| 换 MODE 后 DATABASE_URL 未跟着切 | `stack.sh up` 只在 marker 变化时 `--force-recreate`；显式 `make stack-up S=hindsight MODE=ha` 会写 marker + render + 重建容器；只改 `.mode-hindsight` 文件不动 |
+| 想直接发宿主端口 8888/9999（上游 Quick Start 写法） | 违反 F06（只有 `nginx` 发布宿主端口）；走 `hindsight{,-api}.localhost` |

@@ -44,6 +44,10 @@ chown -R postgres:postgres "$(dirname "${data_dir}")"
 if [ ! -f "${data_dir}/PG_VERSION" ]; then
     gosu postgres initdb -D "${data_dir}" -U postgres --auth=trust >/dev/null
 fi
+# 跨栈客户端（pg-exporter / hindsight）从 devnet 其它 IP 走 TCP 进来：
+# initdb 默认只放行 local/127.0.0.1，这里追加 devnet 段 trust（DEC-55；ha 形态由 patroni.yml 的 pg_hba 承担）。
+grep -q 'devops-cross-stack' "${data_dir}/pg_hba.conf" || \
+    printf 'host all all 172.28.0.0/16 trust # devops-cross-stack\\n' >> "${data_dir}/pg_hba.conf"
 exec gosu postgres postgres -D "${data_dir}" -c listen_addresses=0.0.0.0 -c unix_socket_directories=/tmp
 EOF
     else

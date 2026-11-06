@@ -5,7 +5,7 @@ nginx: nginx:1.27-alpine                        # X.Y
 
 # ---- pg：patroni 由 services/pg/Dockerfile 基于官方 postgres 构建（本地 tag）
 postgres: postgres:17.5                         # X.Y
-patroni: devops/patroni:4.0.4                   # X.Y.Z（本地构建，见 services/pg/Dockerfile）
+patroni: devops/patroni:4.0.4-pv0.8             # 本地构建（services/pg/Dockerfile）：patroni 4.0.4 + postgresql-17-pgvector 0.8.x；tag 加 -pv 让"新镜像含扩展"与旧 `4.0.4`（无扩展）区分，避免缓存里连到一个不带 pgvector 的老 tag（hindsight 存储后端依赖，DEC-55）
 etcd: quay.io/coreos/etcd:v3.5.17               # X.Y.Z（上游不发 X.Y）
 haproxy: haproxy:3.0-alpine                     # X.Y
 postgres_exporter: prometheuscommunity/postgres-exporter:v0.17.1  # X.Y.Z
@@ -44,3 +44,6 @@ jaeger: jaegertracing/jaeger:2.1.0              # X.Y.Z（v2 OTel 发行版）
 
 # ---- 文档浏览（.20 域，DEC-46）
 docsify: rockben/docsify-server:4.4.4           # X.Y.Z（标签跟随内置 docsify-cli 版本，上游不发 X.Y；滚动标签，需严格可复现按 digest pin）
+
+# ---- agent 记忆（.21 域，DEC-55）
+hindsight: ghcr.io/vectorize-io/hindsight:0.6   # X.Y（上游同时发 X.Y 滚动标签与 X.Y.Z；0.6 现指向 0.6.2）
